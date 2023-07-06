@@ -28,6 +28,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
 
   const note = data.body.note as Misskey.entities.Note & {
     tags?: string[];
+    mentions?: string[];
   };
   let text = note.text;
 
@@ -36,6 +37,16 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
       statusCode: 200,
       body: JSON.stringify({
         status: 'NOCP',
+      }),
+      contentType: 'application/json',
+    });
+  }
+
+  if (note.mentions?.length > 0) {
+    return buildResponse({
+      statusCode: 200,
+      body: JSON.stringify({
+        status: 'MENTION_NOT_SUPPORTED',
       }),
       contentType: 'application/json',
     });
