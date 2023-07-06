@@ -105,6 +105,12 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
     postfix = '(민감한 파일 포함)';
   }
 
+  if (note.files.filter(isFileVideo).length > 1) {
+    linkRequired = true;
+
+    postfix = '(다중 동영상 포함)';
+  }
+
   if (note.files.find(file => !isFileTwitterEmbedable(file))) {
     linkRequired = true;
 
@@ -149,10 +155,24 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
 
   text = text.trim();
 
-  for (const file of note.files.filter(file => !file.isSensitive).filter(isFileTwitterEmbedable).slice(0, 4)) {
+  let videoUploaded = false;
+
+  for (const file of note.files.filter(file => !file.isSensitive).filter(isFileTwitterEmbedable)) {
+    if (mediaList.length >= 4) {
+      break;
+    }
+
+    if (isFileVideo(file) && videoUploaded) {
+      continue;
+    }
+
     const media = await uploadMediaToTwitter(client, file);
 
     mediaList.push(media);
+
+    if (isFileVideo(file)) {
+      videoUploaded = true;
+    }
   }
 
   const tweet = await client.v2.tweet(text, {
@@ -215,5 +235,13 @@ function getUserHookSecret(userId: string): string | null {
 }
 
 function isFileTwitterEmbedable(file: Misskey.entities.DriveFile): boolean {
-  return file.type.startsWith('image/') || file.type.startsWith('video/');
+  return isFileImage(file) || isFileVideo(file);
+}
+
+function isFileImage(file: Misskey.entities.DriveFile): boolean {
+  return file.type.startsWith('image/');
+}
+
+function isFileVideo(file: Misskey.entities.DriveFile): boolean {
+  return file.type.startsWith('video/');
 }
