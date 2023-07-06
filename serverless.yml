@@ -22,7 +22,11 @@ functions:
       NODE_ENV: ${opt:stage, self:provider.stage}
       USERMAP: ${env:USERMAP}
       MISSKEY_HOOK_SECRET: ${env:MISSKEY_HOOK_SECRET}
-    url: true
+    events:
+      - http:
+          path: endpoint
+          method: post
+          cors: true
 
 package:
   patterns:
