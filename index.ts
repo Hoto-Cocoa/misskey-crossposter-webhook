@@ -13,6 +13,10 @@ async function handler(event: APIGatewayProxyEventV2WithRequestContext<APIGatewa
   const body = event.isBase64Encoded ? Buffer.from(event.body, 'base64') : event.body;
   const note = JSON.parse(body.toString()).body.note as Misskey.entities.Note;
 
+  let linkRequired = false;
+
+  let text = note.text;
+
   if (event.headers['x-misskey-hook-secret'] !== process.env.MISSKEY_HOOK_SECRET) {
     throw new Error('Invalid secret.');
   }
@@ -24,7 +28,19 @@ async function handler(event: APIGatewayProxyEventV2WithRequestContext<APIGatewa
   const mediaList: string[] = [];
 
   if (note.files.length > 4) {
-    throw new Error('Too many files.');
+    linkRequired = true;
+  }
+
+  if (note.text.length > 280) {
+    linkRequired = true;
+
+    text = note.text.slice(0, 250);
+
+    text += '…';
+  }
+
+  if (linkRequired) {
+    text += `\n\n${process.env.MISSKEY_URL}/notes/${note.id}`;
   }
 
   for (const file of note.files) {
@@ -33,7 +49,7 @@ async function handler(event: APIGatewayProxyEventV2WithRequestContext<APIGatewa
     mediaList.push(media);
   }
 
-  const tweet = await twitter.v1.tweet(note.text, {
+  const tweet = await twitter.v1.tweet(text, {
     media_ids: mediaList.join(','),
   });
 
