@@ -102,6 +102,8 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
   }
 
   if (note.cw) {
+    text = note.cw;
+
     tags.push('CW 설정된 글');
   }
 
