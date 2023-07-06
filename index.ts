@@ -10,7 +10,7 @@ interface User {
 
 const usermap = JSON.parse(process.env.USERMAP) as User[];
 
-async function handler(event: APIGatewayProxyEventV2WithRequestContext<APIGatewayEventRequestContextV2>) {
+export async function handler(event: APIGatewayProxyEventV2WithRequestContext<APIGatewayEventRequestContextV2>) {
   const body = event.isBase64Encoded ? Buffer.from(event.body, 'base64') : event.body;
   const note = JSON.parse(body.toString()).body.note as Misskey.entities.Note;
 
@@ -23,19 +23,43 @@ async function handler(event: APIGatewayProxyEventV2WithRequestContext<APIGatewa
   const host = event.headers['x-misskey-host'];
 
   if (event.headers['x-misskey-hook-secret'] !== process.env.MISSKEY_HOOK_SECRET) {
-    throw new Error('Invalid secret.');
+    return buildResponse({
+      statusCode: 200,
+      body: JSON.stringify({
+        status: 'INVALID_SECRET',
+      }),
+      contentType: 'application/json',
+    });
   }
 
   if (note.visibility !== 'public') {
-    throw new Error('Visibility is not public.');
+    return buildResponse({
+      statusCode: 200,
+      body: JSON.stringify({
+        status: 'VISIBILITY_NOT_PUBLIC',
+      }),
+      contentType: 'application/json',
+    });
   }
 
   if (note.reply) {
-    throw new Error('Reply is not supported.');
+    return buildResponse({
+      statusCode: 200,
+      body: JSON.stringify({
+        status: 'REPLY_NOT_SUPPORTED',
+      }),
+      contentType: 'application/json',
+    });
   }
 
   if (note.renote) {
-    throw new Error('Renote is not supported.');
+    return buildResponse({
+      statusCode: 200,
+      body: JSON.stringify({
+        status: 'RENOTE_NOT_SUPPORTED',
+      }),
+      contentType: 'application/json',
+    });
   }
 
   if (note.poll) {
@@ -56,7 +80,19 @@ async function handler(event: APIGatewayProxyEventV2WithRequestContext<APIGatewa
     postfix = '(민감한 파일 포함)';
   }
 
-  const client = getTwitterClient(note.userId);
+  let client: TwitterApi;
+
+  try {
+    client = getTwitterClient(note.userId);
+  } catch {
+    return buildResponse({
+      statusCode: 200,
+      body: JSON.stringify({
+        status: 'USER_NOT_FOUND',
+      }),
+      contentType: 'application/json',
+    });
+  }
 
   const mediaList: string[] = [];
 
@@ -134,5 +170,3 @@ function getTwitterClient(userId: string): TwitterApi {
 
   return new TwitterApi(user.twitterApiTokens);
 }
-
-export { handler };
