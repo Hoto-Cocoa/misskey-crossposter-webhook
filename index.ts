@@ -151,7 +151,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
 
   const tweet = await client.v2.tweet(text, {
     media: {
-      media_ids: mediaList,
+      media_ids: mediaList.length > 0 ? mediaList : undefined
     },
   });
 
