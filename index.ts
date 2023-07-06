@@ -149,8 +149,10 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
     mediaList.push(media);
   }
 
-  const tweet = await client.v1.tweet(text, {
-    media_ids: mediaList.join(','),
+  const tweet = await client.v2.tweet(text, {
+    media: {
+      media_ids: mediaList,
+    },
   });
 
   console.log(tweet);
