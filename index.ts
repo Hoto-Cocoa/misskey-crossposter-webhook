@@ -43,7 +43,7 @@ async function handler(event: APIGatewayProxyEventV2WithRequestContext<APIGatewa
     text += `\n\nhttps://${host}/notes/${note.id}`;
   }
 
-  for (const file of note.files) {
+  for (const file of note.files.slice(0, 4)) {
     const media = await uploadMediaToTwitter(client, file);
 
     mediaList.push(media);
