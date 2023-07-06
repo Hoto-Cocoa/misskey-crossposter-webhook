@@ -24,7 +24,6 @@ functions:
       TWITTER_ACCESS_TOKEN_SECRET: ${env:TWITTER_ACCESS_TOKEN_SECRET}
       MISSKEY_USER_ID: ${env:MISSKEY_USER_ID}
       MISSKEY_HOOK_SECRET: ${env:MISSKEY_HOOK_SECRET}
-      MISSKEY_URL: ${env:MISSKEY_URL}
     url: true
 
 package:

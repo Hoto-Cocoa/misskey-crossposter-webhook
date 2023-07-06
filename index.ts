@@ -17,6 +17,8 @@ async function handler(event: APIGatewayProxyEventV2WithRequestContext<APIGatewa
 
   let text = note.text;
 
+  const host = event.headers['x-misskey-host'];
+
   if (event.headers['x-misskey-hook-secret'] !== process.env.MISSKEY_HOOK_SECRET) {
     throw new Error('Invalid secret.');
   }
@@ -40,7 +42,7 @@ async function handler(event: APIGatewayProxyEventV2WithRequestContext<APIGatewa
   }
 
   if (linkRequired) {
-    text += `\n\n${process.env.MISSKEY_URL}/notes/${note.id}`;
+    text += `\n\nhttps://${host}/notes/${note.id}`;
   }
 
   for (const file of note.files) {

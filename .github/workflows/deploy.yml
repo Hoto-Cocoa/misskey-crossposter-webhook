@@ -37,4 +37,3 @@ jobs:
         TWITTER_ACCESS_TOKEN_SECRET: ${{ secrets.TWITTER_ACCESS_TOKEN_SECRET }}
         MISSKEY_USER_ID: ${{ secrets.MISSKEY_USER_ID }}
         MISSKEY_HOOK_SECRET: ${{ secrets.MISSKEY_HOOK_SECRET }}
-        MISSKEY_URL: ${{ secrets.MISSKEY_URL }}
