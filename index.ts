@@ -14,6 +14,7 @@ const usermap = JSON.parse(process.env.USERMAP) as User[];
 export async function handler(event: APIGatewayProxyEventV2WithRequestContext<APIGatewayEventRequestContextV2>) {
   const rawBody = event.isBase64Encoded ? Buffer.from(event.body, 'base64') : event.body;
   const data = JSON.parse(rawBody.toString());
+  const host = event.headers['x-misskey-host'];
 
   if (data.type !== 'note') {
     return buildResponse({
@@ -25,33 +26,16 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
     });
   }
 
-  const note = data.body.note as Misskey.entities.Note;
-
-  let linkRequired = false;
-
+  const note = data.body.note as Misskey.entities.Note & {
+    tags: string[];
+  };
   let text = note.text;
 
-  let postfix = '';
-
-  const host = event.headers['x-misskey-host'];
-
-  const secret = getUserHookSecret(note.userId);
-
-  if (!secret) {
+  if (note.tags.find(tag => tag === 'nocp')) {
     return buildResponse({
       statusCode: 200,
       body: JSON.stringify({
-        status: 'USER_NOT_FOUND',
-      }),
-      contentType: 'application/json',
-    });
-  }
-
-  if (event.headers['x-misskey-hook-secret'] !== secret) {
-    return buildResponse({
-      statusCode: 200,
-      body: JSON.stringify({
-        status: 'INVALID_SECRET',
+        status: 'NOCP',
       }),
       contentType: 'application/json',
     });
@@ -87,40 +71,56 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
     });
   }
 
-  if (note.poll) {
-    linkRequired = true;
+  const userId = `${note.userId}@${host}`;
 
-    postfix = '(투표)';
+  const secret = getUserHookSecret(userId);
+
+  if (!secret) {
+    return buildResponse({
+      statusCode: 200,
+      body: JSON.stringify({
+        status: 'USER_NOT_FOUND',
+      }),
+      contentType: 'application/json',
+    });
+  }
+
+  if (event.headers['x-misskey-hook-secret'] !== secret) {
+    return buildResponse({
+      statusCode: 200,
+      body: JSON.stringify({
+        status: 'INVALID_SECRET',
+      }),
+      contentType: 'application/json',
+    });
+  }
+
+  const tags: string[] = [];
+
+  if (note.poll) {
+    tags.push('투표');
   }
 
   if (note.cw) {
-    linkRequired = true;
-
-    postfix = '(CW 설정된 글)';
+    tags.push('CW 설정된 글');
   }
 
   if (note.files.find(file => file.isSensitive)) {
-    linkRequired = true;
-
-    postfix = '(민감한 파일 포함)';
+    tags.push('민감한 파일 포함');
   }
 
   if (note.files.filter(isFileVideo).length > 1) {
-    linkRequired = true;
-
-    postfix = '(다중 동영상 포함)';
+    tags.push('다중 동영상 포함');
   }
 
   if (note.files.find(file => !isFileTwitterEmbedable(file))) {
-    linkRequired = true;
-
-    postfix = '(첨부 파일 포함)';
+    tags.push('첨부 파일 포함');
   }
 
   let client: TwitterApi;
 
   try {
-    client = getTwitterClient(note.userId);
+    client = getTwitterClient(userId);
   } catch {
     return buildResponse({
       statusCode: 200,
@@ -133,24 +133,12 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
 
   const mediaList: string[] = [];
 
-  if (note.files.length > 4) {
-    linkRequired = true;
-  }
-
   if (note.text.length > 200) {
-    linkRequired = true;
+    tags.push('장문');
 
     text = note.text.slice(0, 200);
 
     text += '…';
-  }
-
-  if (postfix) {
-    text += `\n\n${postfix}`;
-  }
-
-  if (linkRequired) {
-    text += `\n\n전체 내용 읽기: https://${host}/notes/${note.id}`;
   }
 
   text = text.trim();
@@ -159,6 +147,8 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
 
   for (const file of note.files.filter(file => !file.isSensitive).filter(isFileTwitterEmbedable)) {
     if (mediaList.length >= 4) {
+      tags.push('5개 이상의 이미지');
+
       break;
     }
 
@@ -173,6 +163,12 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
     if (isFileVideo(file)) {
       videoUploaded = true;
     }
+  }
+
+  if (tags.length > 0) {
+    text += `\n\n(${tags.sort().join(', ')})`;
+
+    text += `\n\n전체 내용 읽기: https://${host}/notes/${note.id}`;
   }
 
   const tweet = await client.v2.tweet(text, {
