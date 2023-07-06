@@ -135,10 +135,10 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
 
   const mediaList: string[] = [];
 
-  if (note.text.length > 200) {
+  if (note.text.length > 180) {
     tags.push('장문');
 
-    text = note.text.slice(0, 200);
+    text = note.text.slice(0, 180);
 
     text += '…';
   }
