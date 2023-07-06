@@ -33,10 +33,10 @@ async function handler(event: APIGatewayProxyEventV2WithRequestContext<APIGatewa
     linkRequired = true;
   }
 
-  if (note.text.length > 250) {
+  if (note.text.length > 240) {
     linkRequired = true;
 
-    text = note.text.slice(0, 250);
+    text = note.text.slice(0, 240);
 
     text += '…';
   }
