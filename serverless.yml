@@ -27,6 +27,14 @@ functions:
       MISSKEY_URL: ${env:MISSKEY_URL}
     url: true
 
+package:
+  patterns:
+    - '!.git/**'
+    - '!test/**'
+    - '!e2e/**'
+    - '!src/**'
+    - '!node_modules/**'
+
 plugins:
   - serverless-dotenv-plugin
   - serverless-plugin-typescript
