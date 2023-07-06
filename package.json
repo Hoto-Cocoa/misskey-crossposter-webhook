@@ -1,0 +1,26 @@
+{
+  "type": "module",
+  "scripts": {
+    "test": "serverless invoke local -f handler -p event.json",
+    "deploy": "serverless deploy --stage production",
+    "deploy:dev": "serverless deploy"
+  },
+  "dependencies": {
+    "@types/aws-lambda": "^8.10.119",
+    "aws-lambda": "^1.0.7",
+    "dotenv": "^16.0.0",
+    "esm": "^3.2.25",
+    "misskey-js": "^0.0.16",
+    "node-fetch": "^2.6.7",
+    "serverless-dotenv-plugin": "^6.0.0",
+    "serverless-offline": "^12.0.4",
+    "serverless-plugin-typescript": "^2.1.5",
+    "ts-node": "^10.9.1",
+    "twitter-api-v2": "^1.12.0",
+    "typescript": "^5.1.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20.3.3",
+    "@types/node-fetch": "^2.6.2"
+  }
+}

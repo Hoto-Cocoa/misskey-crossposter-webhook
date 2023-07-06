@@ -1,0 +1,32 @@
+service: misskey-crossposter
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs14.x
+  region: ap-northeast-2
+  stage: dev
+  iam:
+    role:
+      managedPolicies:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaRole'
+
+functions:
+  handler:
+    handler: index.handler
+    environment:
+      NODE_ENV: ${opt:stage, self:provider.stage}
+      TWITTER_APP_KEY: ${env:TWITTER_APP_KEY}
+      TWITTER_APP_SECRET: ${env:TWITTER_APP_SECRET}
+      TWITTER_ACCESS_TOKEN: ${env:TWITTER_ACCESS_TOKEN}
+      TWITTER_ACCESS_TOKEN_SECRET: ${env:TWITTER_ACCESS_TOKEN_SECRET}
+      MISSKEY_USER_ID: ${env:MISSKEY_USER_ID}
+      MISSKEY_HOOK_SECRET: ${env:MISSKEY_HOOK_SECRET}
+    url: true
+
+plugins:
+  - serverless-dotenv-plugin
+  - serverless-plugin-typescript
+  - serverless-offline
