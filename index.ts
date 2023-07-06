@@ -11,8 +11,20 @@ interface User {
 const usermap = JSON.parse(process.env.USERMAP) as User[];
 
 export async function handler(event: APIGatewayProxyEventV2WithRequestContext<APIGatewayEventRequestContextV2>) {
-  const body = event.isBase64Encoded ? Buffer.from(event.body, 'base64') : event.body;
-  const note = JSON.parse(body.toString()).body.note as Misskey.entities.Note;
+  const rawBody = event.isBase64Encoded ? Buffer.from(event.body, 'base64') : event.body;
+  const body = JSON.parse(rawBody.toString());
+
+  if (body.type !== 'note') {
+    return buildResponse({
+      statusCode: 200,
+      body: JSON.stringify({
+        status: 'NOT_NOTE',
+      }),
+      contentType: 'application/json',
+    });
+  }
+
+  const note = body.note as Misskey.entities.Note;
 
   let linkRequired = false;
 
