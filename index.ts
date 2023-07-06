@@ -1,5 +1,6 @@
 import { APIGatewayEventRequestContextV2, APIGatewayProxyEventV2WithRequestContext, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { TwitterApi, TwitterApiTokens } from 'twitter-api-v2';
+import fetch from 'node-fetch';
 import * as Misskey from 'misskey-js';
 
 interface User {
