@@ -1,5 +1,7 @@
 service: misskey-crossposter
 
+useDotenv: true
+
 frameworkVersion: '3'
 
 provider:
