@@ -32,6 +32,12 @@ package:
     - 'node_modules/node-fetch/**'
     - 'node_modules/twitter-api-v2/**'
 
+    # node-fetch dependencies
+    - 'node_modules/whatwg-url/**'
+    - 'node_modules/webidl-conversions/**'
+    - 'node_modules/punycode/**'
+    - 'node_modules/tr46/**'
+
 plugins:
   - serverless-dotenv-plugin
   - serverless-plugin-typescript
