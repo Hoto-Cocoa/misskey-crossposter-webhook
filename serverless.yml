@@ -29,10 +29,6 @@ functions:
 package:
   patterns:
     - '!.git/**'
-    - '!test/**'
-    - '!e2e/**'
-    - '!src/**'
-    - '!node_modules/**'
 
 plugins:
   - serverless-dotenv-plugin

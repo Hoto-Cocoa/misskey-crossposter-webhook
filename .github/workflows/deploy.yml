@@ -22,7 +22,7 @@ jobs:
       with:
         node-version: '14'
 
-    - run: npm ci
+    - run: npm ci --omit=dev
 
     - name: serverless deploy
       uses: serverless/github-action@master
