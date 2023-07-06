@@ -105,6 +105,12 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
     postfix = '(민감한 파일 포함)';
   }
 
+  if (note.files.find(file => !isFileTwitterEmbedable(file))) {
+    linkRequired = true;
+
+    postfix = '(첨부 파일 포함)';
+  }
+
   let client: TwitterApi;
 
   try {
@@ -133,17 +139,17 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
     text += '…';
   }
 
-  if (linkRequired) {
-    text += `\n\n전체 내용 읽기: https://${host}/notes/${note.id}`;
-  }
-
   if (postfix) {
     text += `\n\n${postfix}`;
   }
 
+  if (linkRequired) {
+    text += `\n\n전체 내용 읽기: https://${host}/notes/${note.id}`;
+  }
+
   text = text.trim();
 
-  for (const file of note.files.filter(file => !file.isSensitive).filter(file => file.type.startsWith('image/')).slice(0, 4)) {
+  for (const file of note.files.filter(file => !file.isSensitive).filter(isFileTwitterEmbedable).slice(0, 4)) {
     const media = await uploadMediaToTwitter(client, file);
 
     mediaList.push(media);
@@ -206,4 +212,8 @@ function getUserHookSecret(userId: string): string | null {
   }
 
   return user.secret;
+}
+
+function isFileTwitterEmbedable(file: Misskey.entities.DriveFile): boolean {
+  return file.type.startsWith('image/') || file.type.startsWith('video/');
 }
