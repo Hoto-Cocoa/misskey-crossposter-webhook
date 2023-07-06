@@ -12,9 +12,9 @@ const usermap = JSON.parse(process.env.USERMAP) as User[];
 
 export async function handler(event: APIGatewayProxyEventV2WithRequestContext<APIGatewayEventRequestContextV2>) {
   const rawBody = event.isBase64Encoded ? Buffer.from(event.body, 'base64') : event.body;
-  const body = JSON.parse(rawBody.toString());
+  const data = JSON.parse(rawBody.toString());
 
-  if (body.type !== 'note') {
+  if (data.type !== 'note') {
     return buildResponse({
       statusCode: 200,
       body: JSON.stringify({
@@ -24,7 +24,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
     });
   }
 
-  const note = body.note as Misskey.entities.Note;
+  const note = data.body.note as Misskey.entities.Note;
 
   let linkRequired = false;
 
