@@ -5,6 +5,7 @@ import * as Misskey from 'misskey-js';
 
 interface User {
   misskeyId: string;
+  secret: string;
   twitterApiTokens: TwitterApiTokens;
 }
 
@@ -34,7 +35,19 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
 
   const host = event.headers['x-misskey-host'];
 
-  if (event.headers['x-misskey-hook-secret'] !== process.env.MISSKEY_HOOK_SECRET) {
+  const secret = getUserHookSecret(note.userId);
+
+  if (!secret) {
+    return buildResponse({
+      statusCode: 200,
+      body: JSON.stringify({
+        status: 'USER_NOT_FOUND',
+      }),
+      contentType: 'application/json',
+    });
+  }
+
+  if (event.headers['x-misskey-hook-secret'] !== secret) {
     return buildResponse({
       statusCode: 200,
       body: JSON.stringify({
@@ -181,4 +194,14 @@ function getTwitterClient(userId: string): TwitterApi {
   }
 
   return new TwitterApi(user.twitterApiTokens);
+}
+
+function getUserHookSecret(userId: string): string | null {
+  const user = usermap.find(user => user.misskeyId === userId);
+
+  if (!user) {
+    return null;
+  }
+
+  return user.secret;
 }
