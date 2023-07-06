@@ -26,6 +26,10 @@ async function handler(event: APIGatewayProxyEventV2WithRequestContext<APIGatewa
     throw new Error('Invalid secret.');
   }
 
+  if (note.visibility !== 'public') {
+    throw new Error('Visibility is not public.');
+  }
+
   if (note.reply) {
     throw new Error('Reply is not supported.');
   }
