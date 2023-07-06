@@ -2,12 +2,12 @@ import { APIGatewayEventRequestContextV2, APIGatewayProxyEventV2WithRequestConte
 import { TwitterApi, TwitterApiTokens } from 'twitter-api-v2';
 import * as Misskey from 'misskey-js';
 
-const twitter = new TwitterApi({
-  appKey: process.env.TWITTER_APP_KEY,
-  appSecret: process.env.TWITTER_APP_SECRET,
-  accessToken: process.env.TWITTER_ACCESS_TOKEN,
-  accessSecret: process.env.TWITTER_ACCESS_TOKEN_SECRET,
-} as TwitterApiTokens);
+interface User {
+  misskeyId: string;
+  twitterApiTokens: TwitterApiTokens;
+}
+
+const usermap = JSON.parse(process.env.USERMAP) as User[];
 
 async function handler(event: APIGatewayProxyEventV2WithRequestContext<APIGatewayEventRequestContextV2>) {
   const body = event.isBase64Encoded ? Buffer.from(event.body, 'base64') : event.body;
@@ -23,9 +23,7 @@ async function handler(event: APIGatewayProxyEventV2WithRequestContext<APIGatewa
     throw new Error('Invalid secret.');
   }
 
-  if (note.userId !== process.env.MISSKEY_USER_ID) {
-    throw new Error('Invalid user.');
-  }
+  const client = getTwitterClient(note.userId);
 
   const mediaList: string[] = [];
 
@@ -46,12 +44,12 @@ async function handler(event: APIGatewayProxyEventV2WithRequestContext<APIGatewa
   }
 
   for (const file of note.files) {
-    const media = await uploadMediaToTwitter(file);
+    const media = await uploadMediaToTwitter(client, file);
 
     mediaList.push(media);
   }
 
-  const tweet = await twitter.v1.tweet(text, {
+  const tweet = await client.v1.tweet(text, {
     media_ids: mediaList.join(','),
   });
 
@@ -66,11 +64,11 @@ async function handler(event: APIGatewayProxyEventV2WithRequestContext<APIGatewa
   });
 }
 
-async function uploadMediaToTwitter(file: Misskey.entities.DriveFile): Promise<string> {
+async function uploadMediaToTwitter(client: TwitterApi, file: Misskey.entities.DriveFile): Promise<string> {
   const response = await fetch(file.url);
   const buffer = await response.arrayBuffer();
 
-  const media = await twitter.v1.uploadMedia(Buffer.from(buffer), {
+  const media = await client.v1.uploadMedia(Buffer.from(buffer), {
     mimeType: file.type,
   });
 
@@ -86,6 +84,16 @@ function buildResponse({ statusCode, body, contentType }: { statusCode: number, 
     body: Buffer.from(body).toString('base64'),
     isBase64Encoded: true,
   }
+}
+
+function getTwitterClient(userId: string): TwitterApi {
+  const user = usermap.find(user => user.misskeyId === userId);
+
+  if (!user) {
+    throw new Error('User not found.');
+  }
+
+  return new TwitterApi(user.twitterApiTokens);
 }
 
 export { handler };
