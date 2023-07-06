@@ -17,10 +17,38 @@ async function handler(event: APIGatewayProxyEventV2WithRequestContext<APIGatewa
 
   let text = note.text;
 
+  let postfix = '';
+
   const host = event.headers['x-misskey-host'];
 
   if (event.headers['x-misskey-hook-secret'] !== process.env.MISSKEY_HOOK_SECRET) {
     throw new Error('Invalid secret.');
+  }
+
+  if (note.reply) {
+    throw new Error('Reply is not supported.');
+  }
+
+  if (note.renote) {
+    throw new Error('Renote is not supported.');
+  }
+
+  if (note.poll) {
+    linkRequired = true;
+
+    postfix = '(투표)';
+  }
+
+  if (note.cw) {
+    linkRequired = true;
+
+    postfix = '(CW 설정된 글)';
+  }
+
+  if (note.files.find(file => file.isSensitive)) {
+    linkRequired = true;
+
+    postfix = '(민감한 파일 포함)';
   }
 
   const client = getTwitterClient(note.userId);
@@ -31,19 +59,25 @@ async function handler(event: APIGatewayProxyEventV2WithRequestContext<APIGatewa
     linkRequired = true;
   }
 
-  if (note.text.length > 240) {
+  if (note.text.length > 200) {
     linkRequired = true;
 
-    text = note.text.slice(0, 240);
+    text = note.text.slice(0, 200);
 
     text += '…';
   }
 
   if (linkRequired) {
-    text += `\n\nhttps://${host}/notes/${note.id}`;
+    text += `\n\n전체 내용 읽기: https://${host}/notes/${note.id}`;
   }
 
-  for (const file of note.files.slice(0, 4)) {
+  if (postfix) {
+    text += `\n\n${postfix}`;
+  }
+
+  text = text.trim();
+
+  for (const file of note.files.filter(file => !file.isSensitive).filter(file => file.type.startsWith('image/')).slice(0, 4)) {
     const media = await uploadMediaToTwitter(client, file);
 
     mediaList.push(media);
