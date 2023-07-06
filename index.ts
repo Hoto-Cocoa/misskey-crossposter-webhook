@@ -27,11 +27,11 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
   }
 
   const note = data.body.note as Misskey.entities.Note & {
-    tags: string[];
+    tags?: string[];
   };
   let text = note.text;
 
-  if (note.tags.find(tag => tag === 'nocp')) {
+  if (note.tags?.find(tag => tag.toLowerCase() === 'nocp')) {
     return buildResponse({
       statusCode: 200,
       body: JSON.stringify({
