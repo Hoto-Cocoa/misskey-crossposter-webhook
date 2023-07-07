@@ -29,6 +29,8 @@ functions:
 
 package:
   patterns:
+    - 'base_profiles/**'
+
     - '!.git/**'
     - '!node_modules/**'
     - 'node_modules/misskey-js/**'
