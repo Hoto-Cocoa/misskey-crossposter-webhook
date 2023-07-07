@@ -5,6 +5,7 @@ import * as Misskey from 'misskey-js';
 import { createHash } from 'crypto';
 import { readFile } from 'fs/promises';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
+import path from 'path';
 
 type WebhookNote = Misskey.entities.Note & {
   tags?: string[];
@@ -294,7 +295,7 @@ async function getUser(userId: string): Promise<User | null> {
 }
 
 async function getBaseProfile(profileName: string): Promise<User> {
-  return JSON.parse((await readFile(`./base_profiles/${profileName}.json`)).toString()) as User;
+  return JSON.parse((await readFile(path.resolve(process.env.LAMBDA_TASK_ROOT ?? __dirname, `./base_profiles/${profileName}.json`))).toString()) as User;
 }
 
 function isFileTwitterEmbedable(file: Misskey.entities.DriveFile): boolean {
