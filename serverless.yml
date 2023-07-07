@@ -46,6 +46,7 @@ package:
     - 'node_modules/fast-xml-parser/**'
     - 'node_modules/tslib/**'
     - 'node_modules/@aws-crypto/**'
+    - 'node_modules/strnum/**'
 
 plugins:
   - serverless-dotenv-plugin
