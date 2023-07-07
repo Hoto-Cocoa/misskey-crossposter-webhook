@@ -46,7 +46,8 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
   }
 
   const note = data.body.note as WebhookNote;
-  const chunks = [ note.text ];
+  const targetNote = note.renote ?? note;
+  const chunks = [ note.renote?.text ?? note.text ];
 
   if (!isValidRequest(note)) {
     return buildResponse({
@@ -102,18 +103,24 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
 
   const tags = new Set<string>();
 
-  if (getStringByteLength(note.text) > 280) {
+  if (targetNote.cw) {
+    chunks[0] = targetNote.cw;
+
+    tags.add('CW 설정된 글');
+  }
+
+  if (note.renote) {
+    chunks[0] = `RENOTE @${targetNote.user.username}@${targetNote.user.host}: ${chunks[0]}`;
+
+    tags.add('리노트');
+  }
+
+  if (getStringByteLength(chunks[0]) > 280) {
     tags.add('장문');
   }
 
   if (note.poll) {
     tags.add('투표');
-  }
-
-  if (note.cw) {
-    chunks[0] = note.cw;
-
-    tags.add('CW 설정된 글');
   }
 
   if (note.files.find(file => file.isSensitive)) {
@@ -216,11 +223,11 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
     chunks[0] = text + '…';
   }
 
-  const text = buildTweetText(chunks);
+  const tweetContent = buildTweetText(chunks);
 
   switch(twitterApiConf.version) {
     case 'v1': {
-      const tweet = await client.v1.tweet(text, {
+      const tweet = await client.v1.tweet(tweetContent, {
         media_ids: mediaList.length > 0 ? mediaList.join(',') : undefined,
       });
 
@@ -230,7 +237,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
     }
 
     case 'v2': {
-      const tweet = await client.v2.tweet(text, {
+      const tweet = await client.v2.tweet(tweetContent, {
         media: mediaList.length > 0 ? {
           media_ids: mediaList,
         } : undefined,
