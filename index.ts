@@ -176,7 +176,13 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
 
     chunks[1] = `(${joinTags(tags)})`;
 
-    const maxLength = 280 - getStringByteLength('…') - getStringByteLength(chunks[1]) - getStringByteLength(`전체 내용 읽기: `) - 23;
+    const maxLength =
+      280 // Max tweet length
+      - getStringByteLength('…') // Ellipsis
+      - getStringByteLength(chunks[1]) // Tags
+      - getStringByteLength(`전체 내용 읽기: `) // Link prefix
+      - 23 // Link length
+      - 4; // Newlines
 
     let text = '';
 
