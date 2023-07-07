@@ -171,10 +171,12 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
 
   let currentLength = getStringByteLength(buildTweetText(chunks));
 
-  if (currentLength > 280) {
+  if (currentLength > 250) {
     tags.add('장문');
 
-    const maxLength = 280 - getStringByteLength('…') - getStringByteLength(`(${joinTags(tags)})`) - getStringByteLength(`전체 내용 읽기: `) - 23;
+    chunks[1] = `(${joinTags(tags)})`;
+
+    const maxLength = 250 - getStringByteLength('…') - getStringByteLength(chunks[1]) - getStringByteLength(`전체 내용 읽기: `) - 23;
 
     let text = '';
 
