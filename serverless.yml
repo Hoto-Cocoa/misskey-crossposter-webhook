@@ -41,6 +41,11 @@ package:
     - 'node_modules/punycode/**'
     - 'node_modules/tr46/**'
 
+    # @aws-sdk dependencies
+    - 'node_modules/@smithy/**'
+    - 'node_modules/fast-xml-parser/**'
+    - 'node_modules/tslib/**'
+
 plugins:
   - serverless-dotenv-plugin
   - serverless-plugin-typescript
