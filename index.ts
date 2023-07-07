@@ -110,7 +110,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
   }
 
   if (note.renote) {
-    chunks[0] = `RENOTE @${targetNote.user.username}@${targetNote.user.host}: ${chunks[0]}`;
+    chunks[0] = `RENOTE @${targetNote.user.username}@${targetNote.user.host ?? host}: ${chunks[0]}`;
 
     tags.add('리노트');
   }
