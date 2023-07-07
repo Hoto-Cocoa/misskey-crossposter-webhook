@@ -6,6 +6,7 @@ import * as Misskey from 'misskey-js';
 interface User {
   misskeyId: string;
   secret: string;
+  twitterApiVersion: 'v1' | 'v2';
   twitterApiTokens: TwitterApiTokens;
 }
 
@@ -84,9 +85,9 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
 
   const userId = `${note.userId}@${host}`;
 
-  const secret = getUserHookSecret(userId);
+  const user = getUser(userId);
 
-  if (!secret) {
+  if (!user) {
     return buildResponse({
       statusCode: 200,
       body: JSON.stringify({
@@ -96,7 +97,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
     });
   }
 
-  if (event.headers['x-misskey-hook-secret'] !== secret) {
+  if (event.headers['x-misskey-hook-secret'] !== user.secret) {
     return buildResponse({
       statusCode: 200,
       body: JSON.stringify({
@@ -130,19 +131,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
     tags.push('첨부 파일 포함');
   }
 
-  let client: TwitterApi;
-
-  try {
-    client = getTwitterClient(userId);
-  } catch {
-    return buildResponse({
-      statusCode: 200,
-      body: JSON.stringify({
-        status: 'USER_NOT_FOUND',
-      }),
-      contentType: 'application/json',
-    });
-  }
+  const client = new TwitterApi(user.twitterApiTokens);
 
   const mediaList: string[] = [];
 
@@ -184,13 +173,29 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
     text += `\n\n전체 내용 읽기: https://${host}/notes/${note.id}`;
   }
 
-  const tweet = await client.v2.tweet(text, {
-    media: mediaList.length > 0 ? {
-      media_ids: mediaList,
-    } : undefined,
-  });
+  switch(user.twitterApiVersion) {
+    case 'v1': {
+      const tweet = await client.v1.tweet(text, {
+        media_ids: mediaList.length > 0 ? mediaList.join(',') : undefined,
+      });
 
-  console.log(tweet);
+      console.log(tweet);
+
+      break;
+    }
+
+    case 'v2': {
+      const tweet = await client.v2.tweet(text, {
+        media: mediaList.length > 0 ? {
+          media_ids: mediaList,
+        } : undefined,
+      });
+
+      console.log(tweet);
+
+      break;
+    }
+  }
 
   return buildResponse({
     statusCode: 200,
@@ -223,24 +228,14 @@ function buildResponse({ statusCode, body, contentType }: { statusCode: number, 
   }
 }
 
-function getTwitterClient(userId: string): TwitterApi {
-  const user = usermap.find(user => user.misskeyId === userId);
-
-  if (!user) {
-    throw new Error('User not found.');
-  }
-
-  return new TwitterApi(user.twitterApiTokens);
-}
-
-function getUserHookSecret(userId: string): string | null {
+function getUser(userId: string): User | null {
   const user = usermap.find(user => user.misskeyId === userId);
 
   if (!user) {
     return null;
   }
 
-  return user.secret;
+  return user;
 }
 
 function isFileTwitterEmbedable(file: Misskey.entities.DriveFile): boolean {
