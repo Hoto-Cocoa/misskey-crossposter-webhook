@@ -2,17 +2,34 @@ import { APIGatewayEventRequestContextV2, APIGatewayProxyEventV2WithRequestConte
 import { TwitterApi, TwitterApiTokens } from 'twitter-api-v2';
 import fetch from 'node-fetch';
 import * as Misskey from 'misskey-js';
+import { createHash } from 'crypto';
+import { readFile } from 'fs/promises';
+import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
+
+type WebhookNote = Misskey.entities.Note & {
+  tags?: string[];
+  mentions?: string[];
+};
 
 interface User {
   misskeyId: string;
   secret: string;
-  twitterApiVersion: 'v1' | 'v2';
-  twitterApiTokens: TwitterApiTokens;
+  twitterApiConfs: UserTwitterApiConf[];
+  confs: {
+    enableRenote: boolean;
+    enableTags: boolean;
+    skipLinkRequired: boolean;
+    alwaysIncludeLink: boolean;
+  }
 }
 
-const usermap = JSON.parse(process.env.USERMAP) as User[];
+interface UserTwitterApiConf {
+  visibility: Misskey.entities.Note['visibility'];
+  version: 'v1' | 'v2';
+  tokens: TwitterApiTokens;
+}
 
-export async function handler(event: APIGatewayProxyEventV2WithRequestContext<APIGatewayEventRequestContextV2>) {
+export async function handler(event: APIGatewayProxyEventV2WithRequestContext<APIGatewayEventRequestContextV2>): Promise<APIGatewayProxyResultV2> {
   const rawBody = event.isBase64Encoded ? Buffer.from(event.body, 'base64') : event.body;
   const data = JSON.parse(rawBody.toString());
   const host = event.headers['x-misskey-host'];
@@ -27,11 +44,18 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
     });
   }
 
-  const note = data.body.note as Misskey.entities.Note & {
-    tags?: string[];
-    mentions?: string[];
-  };
+  const note = data.body.note as WebhookNote;
   const chunks = [ note.text ];
+
+  if (!isValidRequest(note)) {
+    return buildResponse({
+      statusCode: 200,
+      body: JSON.stringify({
+        status: 'INVALID_REQUEST',
+      }),
+      contentType: 'application/json',
+    });
+  }
 
   if (note.tags?.find(tag => tag.toLowerCase() === 'nocp')) {
     return buildResponse({
@@ -43,49 +67,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
     });
   }
 
-  if (note.mentions?.length > 0) {
-    return buildResponse({
-      statusCode: 200,
-      body: JSON.stringify({
-        status: 'MENTION_NOT_SUPPORTED',
-      }),
-      contentType: 'application/json',
-    });
-  }
-
-  if (note.visibility !== 'public') {
-    return buildResponse({
-      statusCode: 200,
-      body: JSON.stringify({
-        status: 'VISIBILITY_NOT_PUBLIC',
-      }),
-      contentType: 'application/json',
-    });
-  }
-
-  if (note.reply) {
-    return buildResponse({
-      statusCode: 200,
-      body: JSON.stringify({
-        status: 'REPLY_NOT_SUPPORTED',
-      }),
-      contentType: 'application/json',
-    });
-  }
-
-  if (note.renote) {
-    return buildResponse({
-      statusCode: 200,
-      body: JSON.stringify({
-        status: 'RENOTE_NOT_SUPPORTED',
-      }),
-      contentType: 'application/json',
-    });
-  }
-
-  const userId = `${note.userId}@${host}`;
-
-  const user = getUser(userId);
+  const user = await getUser(`${note.userId}@${host}`);
 
   if (!user) {
     return buildResponse({
@@ -102,6 +84,16 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
       statusCode: 200,
       body: JSON.stringify({
         status: 'INVALID_SECRET',
+      }),
+      contentType: 'application/json',
+    });
+  }
+
+  if (note.renote && !user.confs.enableRenote) {
+    return buildResponse({
+      statusCode: 200,
+      body: JSON.stringify({
+        status: 'RENOTE_NOT_ENABLED',
       }),
       contentType: 'application/json',
     });
@@ -135,7 +127,19 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
     tags.add('첨부 파일 포함');
   }
 
-  const client = new TwitterApi(user.twitterApiTokens);
+  const twitterApiConf = user.twitterApiConfs.find(conf => conf.visibility === note.visibility);
+
+  if (!twitterApiConf) {
+    return buildResponse({
+      statusCode: 200,
+      body: JSON.stringify({
+        status: 'TWITTER_API_CONF_NOT_FOUND',
+      }),
+      contentType: 'application/json',
+    });
+  }
+
+  const client = new TwitterApi(twitterApiConf.tokens);
 
   const mediaList: string[] = [];
 
@@ -164,8 +168,22 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
   }
 
   if (tags.size > 0) {
-    chunks.push(`(${joinTags(tags)})`);
+    if (user.confs.skipLinkRequired) {
+      return buildResponse({
+        statusCode: 200,
+        body: JSON.stringify({
+          status: 'SKIP_LINK_REQUIRED',
+        }),
+        contentType: 'application/json',
+      });
+    }
 
+    if (user.confs.enableTags) {
+      chunks.push(`(${joinTags(tags)})`);
+    }
+  }
+
+  if (tags.size > 0 || user.confs.alwaysIncludeLink) {
     chunks.push(`전체 내용 읽기: https://${host}/notes/${note.id}`);
   }
 
@@ -199,7 +217,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
 
   const text = buildTweetText(chunks);
 
-  switch(user.twitterApiVersion) {
+  switch(twitterApiConf.version) {
     case 'v1': {
       const tweet = await client.v1.tweet(text, {
         media_ids: mediaList.length > 0 ? mediaList.join(',') : undefined,
@@ -254,14 +272,29 @@ function buildResponse({ statusCode, body, contentType }: { statusCode: number, 
   }
 }
 
-function getUser(userId: string): User | null {
-  const user = usermap.find(user => user.misskeyId === userId);
+async function getUser(userId: string): Promise<User | null> {
+  const hash = createHash('md5').update(userId).digest('hex');
 
-  if (!user) {
-    return null;
+  const s3 = new S3Client({
+    region: 'ap-northeast-2',
+  });
+
+  const { Body } = await s3.send(new GetObjectCommand({
+    Bucket: `hotomoe-crossposter-${process.env.NODE_ENV}`,
+    Key: `profiles/${hash}.json`,
+  }));
+
+  const user = JSON.parse(await Body.transformToString()) as User;
+
+  if (user.misskeyId !== userId) {
+    throw new Error('User file is invalid');
   }
 
-  return user;
+  return Object.assign({}, await getBaseProfile('default'), user);
+}
+
+async function getBaseProfile(profileName: string): Promise<User> {
+  return JSON.parse((await readFile(`./base_profiles/${profileName}.json`)).toString()) as User;
 }
 
 function isFileTwitterEmbedable(file: Misskey.entities.DriveFile): boolean {
@@ -294,4 +327,16 @@ function buildTweetText(chunks: string[]): string {
 
 function joinTags(tags: Set<string>): string {
   return Array.from(tags.values()).sort().join(', ');
+}
+
+function isValidRequest(note: WebhookNote): boolean {
+  if (note.mentions?.length > 0) {
+    return false
+  }
+
+  if (note.reply) {
+    return false;
+  }
+
+  return true;
 }
