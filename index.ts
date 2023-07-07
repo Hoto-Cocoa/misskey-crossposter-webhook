@@ -31,7 +31,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
     tags?: string[];
     mentions?: string[];
   };
-  let text = note.text;
+  const chunks = [ note.text ];
 
   if (note.tags?.find(tag => tag.toLowerCase() === 'nocp')) {
     return buildResponse({
@@ -107,49 +107,45 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
     });
   }
 
-  const tags: string[] = [];
+  const tags = new Set<string>();
+
+  if (getStringByteLength(note.text) > 280) {
+    tags.add('장문');
+  }
 
   if (note.poll) {
-    tags.push('투표');
+    tags.add('투표');
   }
 
   if (note.cw) {
-    text = note.cw;
+    chunks[0] = note.cw;
 
-    tags.push('CW 설정된 글');
+    tags.add('CW 설정된 글');
   }
 
   if (note.files.find(file => file.isSensitive)) {
-    tags.push('민감한 파일 포함');
+    tags.add('민감한 파일 포함');
   }
 
   if (note.files.filter(isFileVideo).length > 1) {
-    tags.push('다중 동영상 포함');
+    tags.add('다중 동영상 포함');
   }
 
   if (note.files.find(file => !isFileTwitterEmbedable(file))) {
-    tags.push('첨부 파일 포함');
+    tags.add('첨부 파일 포함');
   }
 
   const client = new TwitterApi(user.twitterApiTokens);
 
   const mediaList: string[] = [];
 
-  if (note.text.length > 180) {
-    tags.push('장문');
-
-    text = note.text.slice(0, 180);
-
-    text += '…';
-  }
-
-  text = text.trim();
+  chunks[0] = chunks[0].trim();
 
   let videoUploaded = false;
 
   for (const file of note.files.filter(file => !file.isSensitive).filter(isFileTwitterEmbedable)) {
     if (mediaList.length >= 4) {
-      tags.push('5개 이상의 이미지');
+      tags.add('5개 이상의 이미지');
 
       break;
     }
@@ -167,11 +163,33 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
     }
   }
 
-  if (tags.length > 0) {
-    text += `\n\n(${tags.sort().join(', ')})`;
+  if (tags.size > 0) {
+    chunks.push(`(${joinTags(tags)})`);
 
-    text += `\n\n전체 내용 읽기: https://${host}/notes/${note.id}`;
+    chunks.push(`전체 내용 읽기: https://${host}/notes/${note.id}`);
   }
+
+  let currentLength = getStringByteLength(buildTweetText(chunks));
+
+  if (currentLength > 280) {
+    tags.add('장문');
+
+    const maxLength = 280 - getStringByteLength('…') - getStringByteLength(`(${joinTags(tags)})`) - getStringByteLength(`전체 내용 읽기: `) - 23;
+
+    let text = '';
+
+    for (const chunk of chunks) {
+      if (getStringByteLength(text) + getStringByteLength(chunk) > maxLength) {
+        break;
+      }
+
+      text += chunk;
+    }
+
+    chunks[0] += '…';
+  }
+
+  const text = buildTweetText(chunks);
 
   switch(user.twitterApiVersion) {
     case 'v1': {
@@ -248,4 +266,24 @@ function isFileImage(file: Misskey.entities.DriveFile): boolean {
 
 function isFileVideo(file: Misskey.entities.DriveFile): boolean {
   return file.type.startsWith('video/');
+}
+
+function getStringByteLength(content: string): number {
+  let ret = 0;
+
+  for (const char of content) {
+    const escaped = escape(char);
+    if (escaped.startsWith('%u')) ret += (escaped.length - 2) / 2;
+    else ret++;
+  }
+
+  return ret;
+}
+
+function buildTweetText(chunks: string[]): string {
+  return chunks.join('\n\n');
+}
+
+function joinTags(tags: Set<string>): string {
+  return Array.from(tags.values()).sort().join(', ');
 }
