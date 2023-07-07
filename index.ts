@@ -280,18 +280,22 @@ async function getUser(userId: string): Promise<User | null> {
     region: 'ap-northeast-2',
   });
 
-  const { Body } = await s3.send(new GetObjectCommand({
-    Bucket: `hotomoe-crossposter-${process.env.NODE_ENV}`,
-    Key: `profiles/${hash}.json`,
-  }));
+  try {
+    const { Body } = await s3.send(new GetObjectCommand({
+      Bucket: `hotomoe-crossposter-${process.env.NODE_ENV}`,
+      Key: `profiles/${hash}.json`,
+    }));
 
-  const user = JSON.parse(await Body.transformToString()) as User;
+    const user = JSON.parse(await Body.transformToString()) as User;
 
-  if (user.misskeyId !== userId) {
-    throw new Error('User file is invalid');
+    if (user.misskeyId !== userId) {
+      throw new Error('User file is invalid');
+    }
+
+    return Object.assign({}, await getBaseProfile('default'), user);
+  } catch {
+    return null;
   }
-
-  return Object.assign({}, await getBaseProfile('default'), user);
 }
 
 async function getBaseProfile(profileName: string): Promise<User> {
