@@ -47,7 +47,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
 
   const note = data.body.note as WebhookNote;
   const targetNote = note.renote ?? note;
-  const chunks = [ note.renote?.text ?? note.text ];
+  const chunks = [ note.renote?.text ?? note.text ?? '' ];
 
   if (!isValidRequest(note)) {
     return buildResponse({
