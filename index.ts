@@ -211,7 +211,9 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
   if (currentLength > 280) {
     tags.add('장문');
 
-    chunks[1] = `(${joinTags(tags)})`;
+    if (user.confs.enableTags) {
+      chunks[1] = `(${joinTags(tags)})`;
+    }
 
     const maxLength =
       280 // Max tweet length
