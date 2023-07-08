@@ -149,11 +149,10 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
 
   const client = new TwitterApi(twitterApiConf.tokens);
 
+  const uploadTarget: Misskey.entities.DriveFile[] = [];
   const mediaList: string[] = [];
 
   chunks[0] = chunks[0].trim();
-
-  let videoUploaded = false;
 
   for (const file of note.files.filter(file => !file.isSensitive).filter(isFileTwitterEmbedable)) {
     if (mediaList.length >= 4) {
@@ -162,18 +161,18 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
       break;
     }
 
-    if (isFileVideo(file) && videoUploaded) {
+    if (isFileVideo(file) && uploadTarget.filter(isFileVideo).length > 0) {
       continue;
     }
 
+    uploadTarget.push(file);
+  }
+
+  await Promise.all(uploadTarget.map(async file => {
     const media = await uploadMediaToTwitter(client, file);
 
     mediaList.push(media);
-
-    if (isFileVideo(file)) {
-      videoUploaded = true;
-    }
-  }
+  }));
 
   if (tags.size > 0) {
     if (user.confs.skipLinkRequired) {
