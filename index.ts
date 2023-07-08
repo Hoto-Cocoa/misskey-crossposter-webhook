@@ -168,11 +168,23 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
     uploadTarget.push(file);
   }
 
-  await Promise.all(uploadTarget.map(async (file, index) => {
-    const media = await uploadMediaToTwitter(client, file);
+  try {
+    await Promise.all(uploadTarget.map(async (file, index) => {
+      const media = await uploadMediaToTwitter(client, file);
 
-    mediaList[index] = media;
-  }));
+      mediaList[index] = media;
+    }));
+  } catch (e) {
+    console.error(e);
+
+    return buildResponse({
+      statusCode: 200,
+      body: JSON.stringify({
+        status: 'TWITTER_API_ERROR',
+      }),
+      contentType: 'application/json',
+    });
+  }
 
   if (tags.size > 0) {
     if (user.confs.skipLinkRequired) {
@@ -224,37 +236,53 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
 
   const tweetContent = buildTweetText(chunks);
 
-  switch(twitterApiConf.version) {
-    case 'v1': {
-      const tweet = await client.v1.tweet(tweetContent, {
-        media_ids: mediaList.length > 0 ? mediaList.join(',') : undefined,
-      });
+  try {
+    switch(twitterApiConf.version) {
+      case 'v1': {
+        const tweet = await client.v1.tweet(tweetContent, {
+          media_ids: mediaList.length > 0 ? mediaList.join(',') : undefined,
+        });
 
-      console.log(tweet);
+        console.log(tweet);
 
-      break;
+        break;
+      }
+
+      case 'v2': {
+        const tweet = await client.v2.tweet(tweetContent, {
+          media: mediaList.length > 0 ? {
+            media_ids: mediaList,
+          } : undefined,
+        });
+
+        console.log(tweet);
+
+        break;
+      }
+
+      default: {
+        throw new Error('Invalid Twitter API version');
+      }
     }
 
-    case 'v2': {
-      const tweet = await client.v2.tweet(tweetContent, {
-        media: mediaList.length > 0 ? {
-          media_ids: mediaList,
-        } : undefined,
-      });
+    return buildResponse({
+      statusCode: 200,
+      body: JSON.stringify({
+        status: 'OK',
+      }),
+      contentType: 'application/json',
+    });
+  } catch (e) {
+    console.error(e);
 
-      console.log(tweet);
-
-      break;
-    }
+    return buildResponse({
+      statusCode: 200,
+      body: JSON.stringify({
+        status: 'TWITTER_API_ERROR',
+      }),
+      contentType: 'application/json',
+    });
   }
-
-  return buildResponse({
-    statusCode: 200,
-    body: JSON.stringify({
-      status: 'OK',
-    }),
-    contentType: 'application/json',
-  });
 }
 
 async function uploadMediaToTwitter(client: TwitterApi, file: Misskey.entities.DriveFile): Promise<string> {
