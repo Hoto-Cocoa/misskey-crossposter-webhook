@@ -155,7 +155,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
   chunks[0] = chunks[0].trim();
 
   for (const file of note.files.filter(file => !file.isSensitive).filter(isFileTwitterEmbedable)) {
-    if (mediaList.length >= 4) {
+    if (uploadTarget.length >= 4) {
       tags.add('5개 이상의 이미지');
 
       break;
@@ -168,10 +168,10 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
     uploadTarget.push(file);
   }
 
-  await Promise.all(uploadTarget.map(async file => {
+  await Promise.all(uploadTarget.map(async (file, index) => {
     const media = await uploadMediaToTwitter(client, file);
 
-    mediaList.push(media);
+    mediaList[index] = media;
   }));
 
   if (tags.size > 0) {
