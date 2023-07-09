@@ -293,6 +293,8 @@ async function uploadMediaToTwitter(client: TwitterApi, file: Misskey.entities.D
 }
 
 function buildResponse({ statusCode, body, contentType }: { statusCode: number, body: string | Buffer, contentType: string }): APIGatewayProxyResultV2 {
+  console.log(body);
+
   return {
     statusCode,
     headers: {
