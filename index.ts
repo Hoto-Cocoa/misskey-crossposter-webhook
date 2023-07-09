@@ -375,5 +375,9 @@ function isValidRequest(note: WebhookNote): boolean {
     return false;
   }
 
+  if (note.visibility === 'specified') {
+    return false;
+  }
+
   return true;
 }
