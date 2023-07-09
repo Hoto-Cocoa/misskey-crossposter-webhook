@@ -177,13 +177,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
   } catch (e) {
     console.error(e);
 
-    return buildResponse({
-      statusCode: 200,
-      body: JSON.stringify({
-        status: 'TWITTER_API_ERROR',
-      }),
-      contentType: 'application/json',
-    });
+    tags.add('업로드 불가능한 미디어');
   }
 
   if (tags.size > 0) {
