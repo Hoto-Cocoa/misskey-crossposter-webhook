@@ -131,7 +131,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
     tags.add('투표');
   }
 
-  if (note.files.find(file => file.isSensitive)) {
+  if (note.files.find(file => isFileShouldNotIncluded(file, user))) {
     tags.add('민감한 파일 포함');
   }
 
