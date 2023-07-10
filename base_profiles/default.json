@@ -6,6 +6,6 @@
     "alwaysIncludeLink": false,
     "skipHashtag": "nocp",
     "cwTitleOnly": true,
-    "skipIncludeNsfw": true
+    "excludeNsfw": true
   }
 }

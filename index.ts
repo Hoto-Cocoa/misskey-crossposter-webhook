@@ -24,7 +24,7 @@ interface User {
     alwaysIncludeLink: boolean;
     skipHashtag: string;
     cwTitleOnly: boolean;
-    skipIncludeNsfw: boolean;
+    excludeNsfw: boolean;
   }
 }
 
@@ -391,7 +391,7 @@ function isValidRequest(note: WebhookNote): boolean {
 }
 
 function isFileShouldNotIncluded(file: Misskey.entities.DriveFile, user: User): boolean {
-  if (file.isSensitive && user.confs.skipIncludeNsfw) {
+  if (file.isSensitive && user.confs.excludeNsfw) {
     return true;
   }
 
