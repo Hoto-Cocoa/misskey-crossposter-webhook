@@ -333,7 +333,9 @@ async function getUser(userId: string): Promise<User | null> {
     }
 
     return Object.assign({}, await getBaseProfile(user.baseProfile), user);
-  } catch {
+  } catch (e) {
+    console.error(e);
+
     return null;
   }
 }
