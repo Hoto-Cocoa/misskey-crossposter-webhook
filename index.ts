@@ -162,7 +162,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
 
   chunks[0] = chunks[0].trim();
 
-  for (const file of note.files.filter(file => isFileShouldNotIncluded(file, user)).filter(isFileTwitterEmbedable)) {
+  for (const file of note.files.filter(file => !isFileShouldNotIncluded(file, user)).filter(isFileTwitterEmbedable)) {
     if (uploadTarget.length >= 4) {
       tags.add('5개 이상의 이미지');
 
