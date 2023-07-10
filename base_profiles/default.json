@@ -3,6 +3,9 @@
     "enableRenote": false,
     "enableTags": false,
     "skipLinkRequired": false,
-    "alwaysIncludeLink": false
+    "alwaysIncludeLink": false,
+    "skipHashtag": "nocp",
+    "cwTitleOnly": true,
+    "skipIncludeNsfw": true
   }
 }

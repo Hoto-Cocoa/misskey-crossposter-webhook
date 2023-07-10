@@ -21,6 +21,9 @@ interface User {
     enableTags: boolean;
     skipLinkRequired: boolean;
     alwaysIncludeLink: boolean;
+    skipHashtag: string;
+    cwTitleOnly: boolean;
+    skipIncludeNsfw: boolean;
   }
 }
 
@@ -59,16 +62,6 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
     });
   }
 
-  if (note.tags?.find(tag => tag.toLowerCase() === 'nocp')) {
-    return buildResponse({
-      statusCode: 200,
-      body: JSON.stringify({
-        status: 'NOCP',
-      }),
-      contentType: 'application/json',
-    });
-  }
-
   const user = await getUser(`${note.userId}@${host}`);
 
   if (!user) {
@@ -101,12 +94,26 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
     });
   }
 
+  if (note.tags?.find(tag => tag.toLowerCase() === user.confs.skipHashtag.toLowerCase())) {
+    return buildResponse({
+      statusCode: 200,
+      body: JSON.stringify({
+        status: 'NOCP',
+      }),
+      contentType: 'application/json',
+    });
+  }
+
   const tags = new Set<string>();
 
   if (targetNote.cw) {
-    chunks[0] = targetNote.cw;
+    if (user.confs.cwTitleOnly) {
+      chunks[0] = targetNote.cw;
 
-    tags.add('CW 설정된 글');
+      tags.add('CW 설정된 글');
+    } else {
+      chunks[0] = `${targetNote.cw}\n\n${chunks[0]}`;
+    }
   }
 
   if (note.renote) {
@@ -154,7 +161,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
 
   chunks[0] = chunks[0].trim();
 
-  for (const file of note.files.filter(file => !file.isSensitive).filter(isFileTwitterEmbedable)) {
+  for (const file of note.files.filter(file => isFileShouldNotIncluded(file, user)).filter(isFileTwitterEmbedable)) {
     if (uploadTarget.length >= 4) {
       tags.add('5개 이상의 이미지');
 
@@ -380,4 +387,12 @@ function isValidRequest(note: WebhookNote): boolean {
   }
 
   return true;
+}
+
+function isFileShouldNotIncluded(file: Misskey.entities.DriveFile, user: User): boolean {
+  if (file.isSensitive && user.confs.skipIncludeNsfw) {
+    return true;
+  }
+
+  return false;
 }
