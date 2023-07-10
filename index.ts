@@ -53,6 +53,8 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
   const targetNote = note.renote ?? note;
   const chunks = [ note.renote?.text ?? note.text ?? '' ];
 
+  console.log(`Request from ${note.user.username}@${host}`)
+
   if (!isValidRequest(note)) {
     return buildResponse({
       statusCode: 200,
@@ -329,7 +331,7 @@ async function getUser(userId: string): Promise<User | null> {
     const user = JSON.parse(await Body.transformToString()) as User;
 
     if (user.misskeyId !== userId) {
-      throw new Error('User file is invalid');
+      throw new Error(`User file is invalid; Expected ${userId}, got ${user.misskeyId}`);
     }
 
     return Object.assign({}, await getBaseProfile(user.baseProfile), user);
