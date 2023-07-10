@@ -15,6 +15,7 @@ type WebhookNote = Misskey.entities.Note & {
 interface User {
   misskeyId: string;
   secret: string;
+  baseProfile: string;
   twitterApiConfs: UserTwitterApiConf[];
   confs: {
     enableRenote: boolean;
@@ -331,7 +332,7 @@ async function getUser(userId: string): Promise<User | null> {
       throw new Error('User file is invalid');
     }
 
-    return Object.assign({}, await getBaseProfile('default'), user);
+    return Object.assign({}, await getBaseProfile(user.baseProfile), user);
   } catch {
     return null;
   }
