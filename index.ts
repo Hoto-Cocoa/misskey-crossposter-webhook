@@ -6,6 +6,7 @@ import { createHash } from 'crypto';
 import { readFile } from 'fs/promises';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import path from 'path';
+import axios from 'axios';
 
 type WebhookNote = Misskey.entities.Note & {
   tags?: string[];
@@ -79,6 +80,8 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
 
   if (event.headers['x-misskey-hook-secret'] !== user.secret) {
     console.log(`Invalid secret; Expected ${user.secret}, got ${event.headers['x-misskey-hook-secret']}`);
+
+    await sendErrorNotification(note.user.username, host, `웹훅 Secret 설정 오류입니다. https://cp.hoto.moe 페이지를 참고해서 설정을 변경해주세요. 만약 정상적으로 사용하다 이 문제가 발생했으면, 누군가 악의적인 목적을 가지고 해킹을 시도중일 수 있습니다. 이 경우 여기에 답글을 달아 관리자에게 알려주세요. (수신자를 편집하지 마세요!)`);
 
     return buildResponse({
       statusCode: 200,
@@ -285,6 +288,8 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
   } catch (e) {
     console.error(e);
 
+    await sendErrorNotification(note.user.username, host, `트위터 API 오류입니다. API 키 4개가 모두 정상적으로 구성되었는지 확인해주세요.\n\n만약 정상적으로 동작하다가 이 문제가 발생했다면, 해당 사실을 여기에 답글로 적어주신 뒤 웹훅을 비활성화 하시고 기다려주세요. 관리자가 곧 도와드리겠습니다. (수신자를 편집하지 마세요!)\n\n(오류 메시지: ${e.errors?.[0]?.message ?? e.message})`);
+
     return buildResponse({
       statusCode: 200,
       body: JSON.stringify({
@@ -410,4 +415,41 @@ function isFileShouldNotIncluded(file: Misskey.entities.DriveFile, user: User): 
   }
 
   return false;
+}
+
+async function sendErrorNotification(username: string, host: string, message: string): Promise<void> {
+  const targetUserResponse = await axios.post(`https://${host}/api/users/show`, JSON.stringify({
+    username,
+    host,
+    i: process.env.MISSKEY_API_TOKEN,
+  }), {
+    headers: {
+      'content-type': 'application/json',
+    },
+  });
+
+  const targetUser = targetUserResponse.data as Misskey.entities.User;
+
+  const adminUserResponse = await axios.post(`https://${host}/api/users/show`, JSON.stringify({
+    username: process.env.MISSKEY_ADMIN,
+    host: process.env.MISSKEY_INSTANCE,
+    i: process.env.MISSKEY_API_TOKEN,
+  }), {
+    headers: {
+      'content-type': 'application/json',
+    },
+  });
+
+  const adminUser = adminUserResponse.data as Misskey.entities.User;
+
+  await axios.post(`https://${host}/api/notes/create`, JSON.stringify({
+    visibility: 'specified',
+    visibleUserIds: Array.from(new Set<string>([ targetUser.id, adminUser.id ]).values()),
+    text: message,
+    i: process.env.MISSKEY_API_TOKEN,
+  }), {
+    headers: {
+      'content-type': 'application/json',
+    },
+  });
 }
