@@ -53,7 +53,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
   const targetNote = note.renote ?? note;
   const chunks = [ note.renote?.text ?? note.text ?? '' ];
 
-  console.log(`Request from ${note.user.username}@${host}`)
+  console.log(`Request from ${note.user.id}@${host} (@${note.user.username}@${host})`)
 
   if (!isValidRequest(note)) {
     return buildResponse({
@@ -78,6 +78,8 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
   }
 
   if (event.headers['x-misskey-hook-secret'] !== user.secret) {
+    console.log(`Invalid secret; Expected ${user.secret}, got ${event.headers['x-misskey-hook-secret']}`);
+
     return buildResponse({
       statusCode: 200,
       body: JSON.stringify({
@@ -148,6 +150,8 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
   const twitterApiConf = user.twitterApiConfs.find(conf => conf.visibility === note.visibility);
 
   if (!twitterApiConf) {
+    console.log(`Twitter API conf not found for visibility ${note.visibility}`);
+
     return buildResponse({
       statusCode: 200,
       body: JSON.stringify({
@@ -380,14 +384,20 @@ function joinTags(tags: Set<string>): string {
 
 function isValidRequest(note: WebhookNote): boolean {
   if (note.mentions?.length > 0) {
-    return false
+    console.log('Mentions found; skipping');
+
+    return false;
   }
 
   if (note.reply) {
+    console.log('Reply found; skipping');
+
     return false;
   }
 
   if (note.visibility === 'specified') {
+    console.log('Specified visibility found; skipping');
+
     return false;
   }
 
