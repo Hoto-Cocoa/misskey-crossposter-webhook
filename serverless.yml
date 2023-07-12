@@ -29,6 +29,7 @@ functions:
       MISSKEY_INSTANCE: ${env:MISSKEY_INSTANCE}
       MISSKEY_API_TOKEN: ${env:MISSKEY_API_TOKEN}
       MISSKEY_ADMIN: ${env:MISSKEY_ADMIN}
+      CACHE_ENDPOINT: ${env:CACHE_ENDPOINT}
     events:
       - http:
           path: endpoint
@@ -46,6 +47,7 @@ package:
     - 'node_modules/twitter-api-v2/**'
     - 'node_modules/@aws-sdk/**'
     - 'node_modules/axios/**'
+    - 'node_modules/redis/**'
 
     # node-fetch dependencies
     - 'node_modules/whatwg-url/**'
@@ -69,6 +71,12 @@ package:
     - 'node_modules/delayed-stream/**'
     - 'node_modules/mime-types/**'
     - 'node_modules/mime-db/**'
+
+    # redis dependencies
+    - 'node_modules/@redis/**'
+    - 'node_modules/cluster-key-slot/**'
+    - 'node_modules/generic-pool/**'
+    - 'node_modules/yallist/**'
 
 plugins:
   - serverless-dotenv-plugin

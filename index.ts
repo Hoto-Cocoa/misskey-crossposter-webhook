@@ -7,6 +7,7 @@ import { readFile } from 'fs/promises';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import path from 'path';
 import axios from 'axios';
+import { createClient } from 'redis';
 
 type WebhookNote = Misskey.entities.Note & {
   tags?: string[];
@@ -35,13 +36,17 @@ interface UserTwitterApiConf {
   tokens: TwitterApiTokens;
 }
 
+const redisClient = createClient({
+  url: `redis://${process.env.CACHE_ENDPOINT}`,
+});
+
 export async function handler(event: APIGatewayProxyEventV2WithRequestContext<APIGatewayEventRequestContextV2>): Promise<APIGatewayProxyResultV2> {
   const rawBody = event.isBase64Encoded ? Buffer.from(event.body, 'base64') : event.body;
   const data = JSON.parse(rawBody.toString());
   const host = event.headers['x-misskey-host'];
 
   if (data.type !== 'note') {
-    return buildResponse({
+    return await buildResponse({
       statusCode: 200,
       body: JSON.stringify({
         status: 'NOT_NOTE',
@@ -54,10 +59,24 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
   const targetNote = note.renote ?? note;
   const chunks = [ note.renote?.text ?? note.text ?? '' ];
 
-  console.log(`Request from ${note.user.id}@${host} (@${note.user.username}@${host})`)
+  console.log(`Request from ${note.user.id}@${host} (@${note.user.username}@${host})`);
+
+  await redisClient.connect();
+
+  if (await redisClient.get(`hotomoe-crossposter-worker:posted-note-id:${note.id}`)) {
+    console.log('Already posted; skipping');
+
+    return await buildResponse({
+      statusCode: 200,
+      body: JSON.stringify({
+        status: 'ALREADY_POSTED',
+      }),
+      contentType: 'application/json',
+    });
+  }
 
   if (!isValidRequest(note)) {
-    return buildResponse({
+    return await buildResponse({
       statusCode: 200,
       body: JSON.stringify({
         status: 'INVALID_REQUEST',
@@ -69,7 +88,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
   const user = await getUser(`${note.userId}@${host}`);
 
   if (!user) {
-    return buildResponse({
+    return await buildResponse({
       statusCode: 200,
       body: JSON.stringify({
         status: 'USER_NOT_FOUND',
@@ -83,7 +102,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
 
     await sendErrorNotification(note.user.username, host, `웹훅 Secret 설정 오류입니다. https://cp.hoto.moe 페이지를 참고해서 설정을 변경해주세요. 만약 정상적으로 사용하다 이 문제가 발생했으면, 누군가 악의적인 목적을 가지고 해킹을 시도중일 수 있습니다. 이 경우 여기에 답글을 달아 관리자에게 알려주세요. (수신자를 편집하지 마세요!)`);
 
-    return buildResponse({
+    return await buildResponse({
       statusCode: 200,
       body: JSON.stringify({
         status: 'INVALID_SECRET',
@@ -93,7 +112,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
   }
 
   if (note.renote && !user.confs.enableRenote) {
-    return buildResponse({
+    return await buildResponse({
       statusCode: 200,
       body: JSON.stringify({
         status: 'RENOTE_NOT_ENABLED',
@@ -103,7 +122,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
   }
 
   if (note.tags?.find(tag => tag.toLowerCase() === user.confs.skipHashtag.toLowerCase())) {
-    return buildResponse({
+    return await buildResponse({
       statusCode: 200,
       body: JSON.stringify({
         status: 'NOCP',
@@ -155,7 +174,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
   if (!twitterApiConf) {
     console.log(`Twitter API conf not found for visibility ${note.visibility}`);
 
-    return buildResponse({
+    return await buildResponse({
       statusCode: 200,
       body: JSON.stringify({
         status: 'TWITTER_API_CONF_NOT_FOUND',
@@ -199,7 +218,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
 
   if (tags.size > 0) {
     if (user.confs.skipLinkRequired) {
-      return buildResponse({
+      return await buildResponse({
         statusCode: 200,
         body: JSON.stringify({
           status: 'SKIP_LINK_REQUIRED',
@@ -252,7 +271,11 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
   try {
     await sendTweet(client, twitterApiConf.version, tweetContent, mediaList);
 
-    return buildResponse({
+    await redisClient.set(`hotomoe-crossposter-worker:posted-note-id:${note.id}`, '1', {
+      EX: 60 * 60 * 24 * 7,
+    });
+
+    return await buildResponse({
       statusCode: 200,
       body: JSON.stringify({
         status: 'OK',
@@ -266,7 +289,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
       e.errors?.[0]?.code === 187 ||
       e.data?.detail === 'You are not allowed to create a Tweet with duplicate content.'
     ) {
-      return buildResponse({
+      return await buildResponse({
         statusCode: 200,
         body: JSON.stringify({
           status: 'DUPLICATE_TWEET',
@@ -299,7 +322,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
 
     await sendErrorNotification(note.user.username, host, `트위터 API 오류입니다. ${message}\n\n(오류 메시지: ${e.data?.detail ?? e.errors?.[0]?.message ?? e.message})`);
 
-    return buildResponse({
+    return await buildResponse({
       statusCode: 200,
       body: JSON.stringify({
         status: 'TWITTER_API_ERROR',
@@ -320,8 +343,10 @@ async function uploadMediaToTwitter(client: TwitterApi, file: Misskey.entities.D
   return media;
 }
 
-function buildResponse({ statusCode, body, contentType }: { statusCode: number, body: string | Buffer, contentType: string }): APIGatewayProxyResultV2 {
+async function buildResponse({ statusCode, body, contentType }: { statusCode: number, body: string | Buffer, contentType: string }): Promise<APIGatewayProxyResultV2> {
   console.log(body);
+
+  await redisClient.disconnect();
 
   return {
     statusCode,
@@ -335,6 +360,12 @@ function buildResponse({ statusCode, body, contentType }: { statusCode: number, 
 
 async function getUser(userId: string): Promise<User | null> {
   const hash = createHash('md5').update(userId).digest('hex');
+
+  const cachedProfile = await redisClient.get(`hotomoe-crossposter-worker:profile:${hash}`);
+
+  if (cachedProfile) {
+    return JSON.parse(cachedProfile) as User;
+  }
 
   const s3 = new S3Client({
     region: 'ap-northeast-2',
@@ -352,7 +383,13 @@ async function getUser(userId: string): Promise<User | null> {
       throw new Error(`User file is invalid; Expected ${userId}, got ${user.misskeyId}`);
     }
 
-    return mergeDeep(await getBaseProfile(user.baseProfile), user);
+    const profile = mergeDeep(await getBaseProfile(user.baseProfile), user);
+
+    await redisClient.set(`hotomoe-crossposter-worker:profile:${hash}`, JSON.stringify(profile), {
+      EX: 60 * 5,
+    });
+
+    return profile;
   } catch (e) {
     console.error(e);
 
@@ -427,33 +464,12 @@ function isFileShouldNotIncluded(file: Misskey.entities.DriveFile, user: User): 
 }
 
 async function sendErrorNotification(username: string, host: string, message: string): Promise<void> {
-  const targetUserResponse = await axios.post(`https://${process.env.MISSKEY_INSTANCE}/api/users/show`, JSON.stringify({
-    username,
-    host,
-    i: process.env.MISSKEY_API_TOKEN,
-  }), {
-    headers: {
-      'content-type': 'application/json',
-    },
-  });
-
-  const targetUser = targetUserResponse.data as Misskey.entities.User;
-
-  const adminUserResponse = await axios.post(`https://${process.env.MISSKEY_INSTANCE}/api/users/show`, JSON.stringify({
-    username: process.env.MISSKEY_ADMIN,
-    host: process.env.MISSKEY_INSTANCE,
-    i: process.env.MISSKEY_API_TOKEN,
-  }), {
-    headers: {
-      'content-type': 'application/json',
-    },
-  });
-
-  const adminUser = adminUserResponse.data as Misskey.entities.User;
+  const targetUserId = await redisClient.get(`hotomoe-crossposter-worker:user-id:${username}@${host}`) ?? await getMisskeyUserId(host, username);
+  const adminUserId = await redisClient.get(`hotomoe-crossposter-worker:user-id:${process.env.MISSKEY_ADMIN}@${process.env.MISSKEY_INSTANCE}`) ?? await getMisskeyUserId(host, username);
 
   await axios.post(`https://${process.env.MISSKEY_INSTANCE}/api/notes/create`, JSON.stringify({
     visibility: 'specified',
-    visibleUserIds: Array.from(new Set<string>([ targetUser.id, adminUser.id ]).values()),
+    visibleUserIds: Array.from(new Set<string>([ targetUserId, adminUserId ]).values()),
     text: message,
     i: process.env.MISSKEY_API_TOKEN,
   }), {
@@ -463,9 +479,30 @@ async function sendErrorNotification(username: string, host: string, message: st
   });
 }
 
+async function getMisskeyUserId(host: string, username: string): Promise<string> {
+  const response = await axios.post(`https://${process.env.MISSKEY_INSTANCE}/api/users/show`, JSON.stringify({
+    username,
+    host,
+    i: process.env.MISSKEY_API_TOKEN,
+  }), {
+    headers: {
+      'content-type': 'application/json',
+    },
+  });
+
+  const user = response.data as Misskey.entities.User;
+
+  await redisClient.set(`hotomoe-crossposter-worker:user-id:${username}@${host}`, user.id, {
+    EX: 60 * 60 * 24,
+  });
+
+  return user.id;
+}
+
 function isObject(item: any) {
   return (item && typeof item === 'object' && !Array.isArray(item));
 }
+
 function mergeDeep<T = object>(target: T, ...sources: T[]): T {
   if (!sources.length) return target;
   const source = sources.shift();
