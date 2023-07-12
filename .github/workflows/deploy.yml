@@ -34,4 +34,4 @@ jobs:
         MISSKEY_INSTANCE: ${{ secrets.MISSKEY_INSTANCE }}
         MISSKEY_API_TOKEN: ${{ secrets.MISSKEY_API_TOKEN }}
         MISSKEY_ADMIN: ${{ secrets.MISSKEY_ADMIN }}
-        CACHE_ENDPOINT: ${{ secrets.CACHE_ENDPOINT }}
+        REDIS_URL: ${{ secrets.REDIS_URL }}

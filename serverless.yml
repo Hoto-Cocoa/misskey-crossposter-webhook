@@ -29,7 +29,7 @@ functions:
       MISSKEY_INSTANCE: ${env:MISSKEY_INSTANCE}
       MISSKEY_API_TOKEN: ${env:MISSKEY_API_TOKEN}
       MISSKEY_ADMIN: ${env:MISSKEY_ADMIN}
-      CACHE_ENDPOINT: ${env:CACHE_ENDPOINT}
+      REDIS_URL: ${env:REDIS_URL}
     events:
       - http:
           path: endpoint

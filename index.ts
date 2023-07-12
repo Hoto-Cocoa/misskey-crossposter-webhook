@@ -37,7 +37,7 @@ interface UserTwitterApiConf {
 }
 
 const redisClient = createClient({
-  url: `redis://${process.env.CACHE_ENDPOINT}`,
+  url: process.env.REDIS_URL,
 });
 
 export async function handler(event: APIGatewayProxyEventV2WithRequestContext<APIGatewayEventRequestContextV2>): Promise<APIGatewayProxyResultV2> {
@@ -269,9 +269,11 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
   const tweetContent = buildTweetText(chunks);
 
   try {
-    await sendTweet(client, twitterApiConf.version, tweetContent, mediaList);
+    const replyToTweetId = await redisClient.get(`hotomoe-crossposter-worker:posted-note-id:${note.reply?.id}`);
 
-    await redisClient.set(`hotomoe-crossposter-worker:posted-note-id:${note.id}`, '1', {
+    const tweetId = await sendTweet(client, twitterApiConf.version, tweetContent, mediaList, replyToTweetId ?? undefined);
+
+    await redisClient.set(`hotomoe-crossposter-worker:posted-note-id:${note.id}`, tweetId, {
       EX: 60 * 60 * 24 * 7,
     });
 
@@ -398,7 +400,7 @@ async function getUser(userId: string): Promise<User | null> {
 }
 
 async function getBaseProfile(profileName: string): Promise<User> {
-  return JSON.parse((await readFile(path.resolve(process.env.LAMBDA_TASK_ROOT ?? __dirname, `./base_profiles/${profileName}.json`))).toString()) as User;
+  return JSON.parse((await readFile(path.resolve(`./base_profiles/${profileName}.json`))).toString()) as User;
 }
 
 function isFileTwitterEmbedable(file: Misskey.entities.DriveFile): boolean {
@@ -440,8 +442,8 @@ function isValidRequest(note: WebhookNote): boolean {
     return false;
   }
 
-  if (note.reply) {
-    console.log('Reply found; skipping');
+  if (note.reply && note.reply.userId !== note.userId) {
+    console.log('Reply to other user found; skipping');
 
     return false;
   }
@@ -521,27 +523,37 @@ function mergeDeep<T = object>(target: T, ...sources: T[]): T {
   return mergeDeep(target, ...sources);
 }
 
-async function sendTweet(client: TwitterApi, version: 'v1' | 'v2', content: string, mediaIds: string[], retry?: boolean): Promise<void> {
+async function sendTweet(client: TwitterApi, version: 'v1' | 'v2', content: string, mediaIds: string[], replyTo?: string | undefined, retry?: boolean | undefined): Promise<string> {
   try {
+    let tweetId: string;
+
     switch(version) {
       case 'v1': {
         const tweet = await client.v1.tweet(content, {
+          in_reply_to_status_id: replyTo,
           media_ids: mediaIds.length > 0 ? mediaIds.join(',') : undefined,
         });
 
         console.log(tweet);
+
+        tweetId = tweet.id_str;
 
         break;
       }
 
       case 'v2': {
         const tweet = await client.v2.tweet(content, {
+          reply: replyTo ? {
+            in_reply_to_tweet_id: replyTo,
+          } : undefined,
           media: mediaIds.length > 0 ? {
             media_ids: mediaIds,
           } : undefined,
         });
 
         console.log(tweet);
+
+        tweetId = tweet.data.id;
 
         break;
       }
@@ -550,11 +562,11 @@ async function sendTweet(client: TwitterApi, version: 'v1' | 'v2', content: stri
         throw new Error('Invalid Twitter API version');
       }
     }
+
+    return tweetId;
   } catch (e) {
     if (e.response?.statusCode === 503 && !retry) {
-      await sendTweet(client, version, content, mediaIds, true);
-
-      return;
+      return await sendTweet(client, version, content, mediaIds, replyTo, true);
     }
 
     throw e;
