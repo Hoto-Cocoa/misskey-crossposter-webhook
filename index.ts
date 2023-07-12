@@ -304,12 +304,16 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
 
     switch (e.data?.status) {
       case 401: {
+        await redisClient.del(`hotomoe-crossposter-worker:profile:${createHash('md5').update(`${note.userId}@${host}`).digest('hex')}`);
+
         message = 'API 키 4개가 모두 정상적으로 구성되었는지 확인해주세요.\n\n만약 정상적으로 동작하다가 이 문제가 발생했다면, 해당 사실을 여기에 답글로 적어주신 뒤 웹훅을 비활성화 하시고 기다려주세요. 관리자가 곧 도와드리겠습니다. (수신자를 편집하지 마세요!)';
 
         break;
       }
 
       case 403: {
+        await redisClient.del(`hotomoe-crossposter-worker:profile:${createHash('md5').update(`${note.userId}@${host}`).digest('hex')}`);
+
         message = 'API 키 4개가 모두 정상적으로 구성되었는지 확인해주세요.\n\n만약 정상적으로 동작하다가 이 문제가 발생했다면, 해당 사실을 여기에 답글로 적어주신 뒤 웹훅을 비활성화 하시고 기다려주세요. 관리자가 곧 도와드리겠습니다. (수신자를 편집하지 마세요!)';
 
         break;
