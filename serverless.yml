@@ -12,7 +12,6 @@ provider:
   iam:
     role:
       managedPolicies:
-        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole'
         - 'arn:aws:iam::aws:policy/service-role/AWSLambdaRole'
         - 'arn:aws:iam::aws:policy/AmazonS3FullAccess'
   vpc:
