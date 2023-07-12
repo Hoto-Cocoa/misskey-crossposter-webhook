@@ -1,5 +1,5 @@
 import { APIGatewayEventRequestContextV2, APIGatewayProxyEventV2WithRequestContext, APIGatewayProxyResultV2 } from 'aws-lambda';
-import { TwitterApi, TwitterApiTokens } from 'twitter-api-v2';
+import { ApiPartialResponseError, TwitterApi, TwitterApiTokens } from 'twitter-api-v2';
 import fetch from 'node-fetch';
 import * as Misskey from 'misskey-js';
 import { createHash } from 'crypto';
@@ -250,33 +250,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
   const tweetContent = buildTweetText(chunks);
 
   try {
-    switch(twitterApiConf.version) {
-      case 'v1': {
-        const tweet = await client.v1.tweet(tweetContent, {
-          media_ids: mediaList.length > 0 ? mediaList.join(',') : undefined,
-        });
-
-        console.log(tweet);
-
-        break;
-      }
-
-      case 'v2': {
-        const tweet = await client.v2.tweet(tweetContent, {
-          media: mediaList.length > 0 ? {
-            media_ids: mediaList,
-          } : undefined,
-        });
-
-        console.log(tweet);
-
-        break;
-      }
-
-      default: {
-        throw new Error('Invalid Twitter API version');
-      }
-    }
+    await sendTweet(client, twitterApiConf.version, tweetContent, mediaList);
 
     return buildResponse({
       statusCode: 200,
@@ -288,19 +262,42 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
   } catch (e) {
     console.error(e);
 
-    switch(e.errors?.[0]?.code) {
-      case 187: {
-        return buildResponse({
-          statusCode: 200,
-          body: JSON.stringify({
-            status: 'DUPLICATE_TWEET',
-          }),
-          contentType: 'application/json',
-        });
+    if (
+      e.errors?.[0]?.code === 187 ||
+      e.data?.detail === 'You are not allowed to create a Tweet with duplicate content.'
+    ) {
+      return buildResponse({
+        statusCode: 200,
+        body: JSON.stringify({
+          status: 'DUPLICATE_TWEET',
+        }),
+        contentType: 'application/json',
+      });
+    }
+
+    let message = '';
+
+    switch (e.data?.status) {
+      case 401: {
+        message = 'API 키 4개가 모두 정상적으로 구성되었는지 확인해주세요.\n\n만약 정상적으로 동작하다가 이 문제가 발생했다면, 해당 사실을 여기에 답글로 적어주신 뒤 웹훅을 비활성화 하시고 기다려주세요. 관리자가 곧 도와드리겠습니다. (수신자를 편집하지 마세요!)';
+
+        break;
+      }
+
+      case 403: {
+        message = 'API 키 4개가 모두 정상적으로 구성되었는지 확인해주세요.\n\n만약 정상적으로 동작하다가 이 문제가 발생했다면, 해당 사실을 여기에 답글로 적어주신 뒤 웹훅을 비활성화 하시고 기다려주세요. 관리자가 곧 도와드리겠습니다. (수신자를 편집하지 마세요!)';
+
+        break;
+      }
+
+      case 503: {
+        message = '트위터 API가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요.';
+
+        break;
       }
     }
 
-    await sendErrorNotification(note.user.username, host, `트위터 API 오류입니다. API 키 4개가 모두 정상적으로 구성되었는지 확인해주세요.\n\n만약 정상적으로 동작하다가 이 문제가 발생했다면, 해당 사실을 여기에 답글로 적어주신 뒤 웹훅을 비활성화 하시고 기다려주세요. 관리자가 곧 도와드리겠습니다. (수신자를 편집하지 마세요!)\n\n(오류 메시지: ${e.errors?.[0]?.message ?? e.message})`);
+    await sendErrorNotification(note.user.username, host, `트위터 API 오류입니다. ${message}\n\n(오류 메시지: ${e.data?.detail ?? e.errors?.[0]?.message ?? e.message})`);
 
     return buildResponse({
       statusCode: 200,
@@ -485,4 +482,44 @@ function mergeDeep<T = object>(target: T, ...sources: T[]): T {
   }
 
   return mergeDeep(target, ...sources);
+}
+
+async function sendTweet(client: TwitterApi, version: 'v1' | 'v2', content: string, mediaIds: string[], retry?: boolean): Promise<void> {
+  try {
+    switch(version) {
+      case 'v1': {
+        const tweet = await client.v1.tweet(content, {
+          media_ids: mediaIds.length > 0 ? mediaIds.join(',') : undefined,
+        });
+
+        console.log(tweet);
+
+        break;
+      }
+
+      case 'v2': {
+        const tweet = await client.v2.tweet(content, {
+          media: mediaIds.length > 0 ? {
+            media_ids: mediaIds,
+          } : undefined,
+        });
+
+        console.log(tweet);
+
+        break;
+      }
+
+      default: {
+        throw new Error('Invalid Twitter API version');
+      }
+    }
+  } catch (e) {
+    if (e.response?.statusCode === 503 && !retry) {
+      await sendTweet(client, version, content, mediaIds, true);
+
+      return;
+    }
+
+    throw e;
+  }
 }
