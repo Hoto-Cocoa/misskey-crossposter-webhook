@@ -1,5 +1,5 @@
 import { APIGatewayEventRequestContextV2, APIGatewayProxyEventV2WithRequestContext, APIGatewayProxyResultV2 } from 'aws-lambda';
-import { ApiPartialResponseError, TwitterApi, TwitterApiTokens } from 'twitter-api-v2';
+import { TwitterApi, TwitterApiTokens } from 'twitter-api-v2';
 import fetch from 'node-fetch';
 import * as Misskey from 'misskey-js';
 import { createHash } from 'crypto';
