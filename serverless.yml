@@ -12,9 +12,15 @@ provider:
   iam:
     role:
       managedPolicies:
-        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole'
         - 'arn:aws:iam::aws:policy/service-role/AWSLambdaRole'
         - 'arn:aws:iam::aws:policy/AmazonS3FullAccess'
+  vpc:
+    securityGroupIds:
+      - sg-f610b59c
+    subnetIds:
+      - subnet-0c408035072b66f05
+      - subnet-0e2198b674beac6d5
 
 functions:
   handler:
