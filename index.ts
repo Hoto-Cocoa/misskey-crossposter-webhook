@@ -418,7 +418,7 @@ function isFileShouldNotIncluded(file: Misskey.entities.DriveFile, user: User): 
 }
 
 async function sendErrorNotification(username: string, host: string, message: string): Promise<void> {
-  const targetUserResponse = await axios.post(`https://${host}/api/users/show`, JSON.stringify({
+  const targetUserResponse = await axios.post(`https://${process.env.MISSKEY_INSTANCE}/api/users/show`, JSON.stringify({
     username,
     host,
     i: process.env.MISSKEY_API_TOKEN,
@@ -430,7 +430,7 @@ async function sendErrorNotification(username: string, host: string, message: st
 
   const targetUser = targetUserResponse.data as Misskey.entities.User;
 
-  const adminUserResponse = await axios.post(`https://${host}/api/users/show`, JSON.stringify({
+  const adminUserResponse = await axios.post(`https://${process.env.MISSKEY_INSTANCE}/api/users/show`, JSON.stringify({
     username: process.env.MISSKEY_ADMIN,
     host: process.env.MISSKEY_INSTANCE,
     i: process.env.MISSKEY_API_TOKEN,
@@ -442,7 +442,7 @@ async function sendErrorNotification(username: string, host: string, message: st
 
   const adminUser = adminUserResponse.data as Misskey.entities.User;
 
-  await axios.post(`https://${host}/api/notes/create`, JSON.stringify({
+  await axios.post(`https://${process.env.MISSKEY_INSTANCE}/api/notes/create`, JSON.stringify({
     visibility: 'specified',
     visibleUserIds: Array.from(new Set<string>([ targetUser.id, adminUser.id ]).values()),
     text: message,
