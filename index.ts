@@ -273,9 +273,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
 
     const tweetId = await sendTweet(client, twitterApiConf.version, tweetContent, mediaList, replyToTweetId ?? undefined);
 
-    await redisClient.set(`hotomoe-crossposter-worker:posted-note-id:${note.id}`, tweetId, {
-      EX: 60 * 60 * 24 * 7,
-    });
+    await redisClient.set(`hotomoe-crossposter-worker:posted-note-id:${note.id}`, tweetId);
 
     return await buildResponse({
       statusCode: 200,
