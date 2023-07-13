@@ -1,6 +1,6 @@
 import { CacheService } from '../../services/CacheService.js';
 import { MisskeyService } from '../../services/MisskeyService.js';
-import { ToTuple } from '../../util-types.js';
+import { ToTuple } from '../../types/utils.js';
 import * as Misskey from 'misskey-js';
 import axios from 'axios';
 import nock from 'nock';
