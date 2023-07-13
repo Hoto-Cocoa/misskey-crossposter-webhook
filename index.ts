@@ -63,7 +63,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
 
   await redisClient.connect();
 
-  if (await redisClient.get(`hotomoe-crossposter-worker:posted-note-id:${note.id}`)) {
+  if (await redisClient.get(`hotomoe-crossposter-worker:posted-note-id:${note.id}@${host}`)) {
     console.log('Already posted; skipping');
 
     return await buildResponse({
@@ -269,11 +269,11 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
   const tweetContent = buildTweetText(chunks);
 
   try {
-    const replyToTweetId = await redisClient.get(`hotomoe-crossposter-worker:posted-note-id:${note.reply?.id}`);
+    const replyToTweetId = await redisClient.get(`hotomoe-crossposter-worker:posted-note-id:${note.reply?.id}@${host}`) ?? undefined;
 
-    const tweetId = await sendTweet(client, twitterApiConf.version, tweetContent, mediaList, replyToTweetId ?? undefined);
+    const tweetId = await sendTweet(client, twitterApiConf.version, tweetContent, mediaList, replyToTweetId);
 
-    await redisClient.set(`hotomoe-crossposter-worker:posted-note-id:${note.id}`, tweetId);
+    await redisClient.set(`hotomoe-crossposter-worker:posted-note-id:${note.id}@${host}`, tweetId);
 
     return await buildResponse({
       statusCode: 200,
