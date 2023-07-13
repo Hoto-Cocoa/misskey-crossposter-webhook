@@ -469,7 +469,7 @@ function isFileShouldNotIncluded(file: Misskey.entities.DriveFile, user: User): 
 
 async function sendErrorNotification(username: string, host: string, message: string): Promise<void> {
   const targetUserId = await redisClient.get(`hotomoe-crossposter-worker:user-id:${username}@${host}`) ?? await getMisskeyUserId(host, username);
-  const adminUserId = await redisClient.get(`hotomoe-crossposter-worker:user-id:${process.env.MISSKEY_ADMIN}@${process.env.MISSKEY_INSTANCE}`) ?? await getMisskeyUserId(host, username);
+  const adminUserId = await redisClient.get(`hotomoe-crossposter-worker:user-id:${process.env.MISSKEY_ADMIN}@${process.env.MISSKEY_INSTANCE}`) ?? await getMisskeyUserId(process.env.MISSKEY_INSTANCE, process.env.MISSKEY_ADMIN);
 
   await axios.post(`https://${process.env.MISSKEY_INSTANCE}/api/notes/create`, JSON.stringify({
     visibility: 'specified',
