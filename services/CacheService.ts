@@ -14,18 +14,30 @@ export class CacheService {
     if (!CacheService.instance) {
       CacheService.instance = new CacheService();
 
-      await CacheService.instance.client.connect();
+      if (CacheService.instance.client.connect) {
+        await CacheService.instance.client.connect();
+      }
     }
 
     return CacheService.instance;
   }
 
   async get(type: string, key: string): Promise<string | null> {
+    if (!type || !key) {
+      return null;
+    }
+
     return await this.client.get(`hotomoe-crossposter-worker:${type}:${key}`);
   }
 
-  async set(type: string, key: string, value: string, options?: SetOptions): Promise<void> {
+  async set(type: string, key: string, value: string, options: SetOptions = {}): Promise<void> {
+    if (!type || !key || !value) {
+      return;
+    }
+
     await this.client.set(`hotomoe-crossposter-worker:${type}:${key}`, value, options);
+
+    return;
   }
 
   async del(type: string, key: string): Promise<void> {

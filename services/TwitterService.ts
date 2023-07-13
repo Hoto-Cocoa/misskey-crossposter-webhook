@@ -17,7 +17,7 @@ export class TwitterService {
     this.client = new TwitterApi(conf);
   }
 
-  async tweet(text: string, options?: TwitterServiceTweetOptions): Promise<string> {
+  async tweet(text: string, options: TwitterServiceTweetOptions = {}): Promise<string> {
     let tweetId: string;
 
     try {
@@ -25,11 +25,11 @@ export class TwitterService {
         case 'v1': {
           const opt = {} as Partial<SendTweetV1Params>;
 
-          if (options?.replyTo) {
+          if (options.replyTo) {
             opt.in_reply_to_status_id = options.replyTo;
           }
 
-          if (options?.mediaIds?.length > 0) {
+          if (options.mediaIds?.length) {
             opt.media_ids = options.mediaIds.join(',');
           }
 
@@ -45,13 +45,13 @@ export class TwitterService {
         case 'v2': {
           const opt = {} as Partial<SendTweetV2Params>;
 
-          if (options?.replyTo) {
+          if (options.replyTo) {
             opt.reply = {
               in_reply_to_tweet_id: options.replyTo,
             };
           }
 
-          if (options?.mediaIds?.length > 0) {
+          if (options.mediaIds?.length) {
             opt.media = {
               media_ids: options.mediaIds,
             };
@@ -73,7 +73,9 @@ export class TwitterService {
 
       return tweetId;
     } catch (e) {
-      if (e.response?.statusCode === 503 && !options.isRetry) {
+      const error = e as any;
+
+      if (error.response?.statusCode === 503 && !options.isRetry) {
         return await this.tweet(text, Object.assign({}, options, { isRetry: true }));
       }
 

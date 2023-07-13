@@ -13,9 +13,19 @@ const profileService = new ProfileService(cacheService);
 const misskeyService = new MisskeyService(cacheService);
 
 export async function handler(event: APIGatewayProxyEventV2WithRequestContext<APIGatewayEventRequestContextV2>): Promise<APIGatewayProxyResultV2> {
-  const rawBody = event.isBase64Encoded ? Buffer.from(event.body, 'base64') : event.body;
+  const rawBody = event.isBase64Encoded ? Buffer.from(event.body!, 'base64') : event.body!;
   const data = JSON.parse(rawBody.toString());
   const host = event.headers['x-misskey-host'];
+
+  if (!host) {
+    return await buildResponse({
+      statusCode: 200,
+      body: JSON.stringify({
+        status: 'HOST_NOT_FOUND',
+      }),
+      contentType: 'application/json',
+    });
+  }
 
   if (!await isValidRequest(data, host)) {
     return await buildResponse({
@@ -119,8 +129,6 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
 
   const twitterApiConf = user.twitterApiConfs.find(conf => conf.visibility === note.visibility);
 
-  const twitterService = new TwitterService(twitterApiConf.version, twitterApiConf.tokens);
-
   if (!twitterApiConf) {
     console.log(`Twitter API conf not found for visibility ${note.visibility}`);
 
@@ -132,6 +140,8 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
       contentType: 'application/json',
     });
   }
+
+  const twitterService = new TwitterService(twitterApiConf.version, twitterApiConf.tokens);
 
   const uploadTarget: Misskey.entities.DriveFile[] = [];
   const mediaList: string[] = [];
@@ -235,7 +245,9 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
       }),
       contentType: 'application/json',
     });
-  } catch (e) {
+  } catch (_e) {
+    const e = _e as any;
+
     console.error(e);
 
     if (
@@ -341,7 +353,7 @@ async function isValidRequest(data: any, host: string): Promise<boolean> {
 
   const note = data.body.note as WebhookNote;
 
-  if (note.mentions?.length > 0) {
+  if (note.mentions?.length) {
     console.log('Mentions found; skipping');
 
     return false;
@@ -378,7 +390,7 @@ function isFileIncludable(file: Misskey.entities.DriveFile, user: User): boolean
 
 async function sendErrorNotification(username: string, host: string, message: string): Promise<void> {
   const targetUserId =  await misskeyService.getUserId(host, username);
-  const adminUserId = await misskeyService.getUserId(process.env.MISSKEY_INSTANCE, process.env.MISSKEY_ADMIN);
+  const adminUserId = await misskeyService.getUserId(process.env.MISSKEY_INSTANCE!, process.env.MISSKEY_ADMIN!);
 
   await misskeyService.createNote(message, {
     visibility: 'specified',

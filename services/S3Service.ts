@@ -10,11 +10,15 @@ export class S3Service {
   }
 
   async getFile(key: string): Promise<string | undefined> {
-    const { Body } = await this.client.send(new GetObjectCommand({
-      Bucket: `hotomoe-crossposter-${process.env.NODE_ENV}`,
-      Key: key,
-    }));
+    try {
+      const { Body } = await this.client.send(new GetObjectCommand({
+        Bucket: `hotomoe-crossposter-${process.env.NODE_ENV}`,
+        Key: key,
+      }));
 
-    return Body?.transformToString();
+      return Body?.transformToString();
+    } catch {
+      return undefined;
+    }
   }
 }

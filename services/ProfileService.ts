@@ -37,7 +37,13 @@ export class ProfileService {
         throw new Error(`User file is invalid; Expected ${userId}, got ${user.misskeyId}`);
       }
 
-      const profile = mergeDeep(await this.getBaseProfile(user.baseProfile), user);
+      const baseProfile = await this.getBaseProfile(user.baseProfile);
+
+      if (!baseProfile) {
+        throw new Error(`Base profile not found: ${user.baseProfile}`);
+      }
+
+      const profile = mergeDeep(baseProfile, user);
 
       await this.cacheService.set('profile', hash, JSON.stringify(profile), {
         EX: 60 * 5,
@@ -51,7 +57,11 @@ export class ProfileService {
     }
   }
 
-  private async getBaseProfile(profileName: string): Promise<User> {
-    return JSON.parse((await readFile(path.resolve(`./base_profiles/${profileName}.json`))).toString()) as User;
+  public async getBaseProfile(profileName: string): Promise<User | null> {
+    try {
+      return JSON.parse((await readFile(path.resolve(`./base_profiles/${profileName}.json`))).toString()) as User;
+    } catch {
+      return null;
+    }
   }
 }

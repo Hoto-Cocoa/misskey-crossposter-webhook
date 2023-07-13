@@ -7,7 +7,7 @@
 	"compilerOptions": {
 		"target": "es2022",
 		"module": "es2022",
-		"strict": false,
+		"strict": true,
 		"importHelpers": false,
 		"moduleResolution": "node",
 		"esModuleInterop": true,
