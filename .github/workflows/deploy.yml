@@ -1,10 +1,7 @@
 on:
-  workflow_run:
-    workflows: ["Run Tests"]
+  push:
     branches:
       - master
-    types:
-      - completed
   release:
     types: [released]
 
