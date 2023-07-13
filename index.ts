@@ -1,55 +1,27 @@
 import { APIGatewayEventRequestContextV2, APIGatewayProxyEventV2WithRequestContext, APIGatewayProxyResultV2 } from 'aws-lambda';
-import { TwitterApi, TwitterApiTokens } from 'twitter-api-v2';
-import fetch from 'node-fetch';
 import * as Misskey from 'misskey-js';
-import { createHash } from 'crypto';
-import { readFile } from 'fs/promises';
-import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
-import path from 'path';
-import axios from 'axios';
-import { createClient } from 'redis';
+import { getHash, getUrlFileBuffer } from './utils.js';
+import { WebhookNote } from './types/webhook.js';
+import { User } from './types/user.js';
+import { CacheService } from './services/CacheService.js';
+import { ProfileService } from './services/ProfileService.js';
+import { TwitterService } from './services/TwitterService.js';
+import { MisskeyService } from './services/MisskeyService.js';
 
-type WebhookNote = Misskey.entities.Note & {
-  tags?: string[];
-  mentions?: string[];
-};
-
-interface User {
-  misskeyId: string;
-  secret: string;
-  baseProfile: string;
-  twitterApiConfs: UserTwitterApiConf[];
-  confs: {
-    enableRenote: boolean;
-    enableTags: boolean;
-    skipLinkRequired: boolean;
-    alwaysIncludeLink: boolean;
-    skipHashtag: string;
-    cwTitleOnly: boolean;
-    excludeNsfw: boolean;
-  }
-}
-
-interface UserTwitterApiConf {
-  visibility: Misskey.entities.Note['visibility'];
-  version: 'v1' | 'v2';
-  tokens: TwitterApiTokens;
-}
-
-const redisClient = createClient({
-  url: process.env.REDIS_URL,
-});
+const cacheService = await CacheService.getInstance();
+const profileService = new ProfileService(cacheService);
+const misskeyService = new MisskeyService(cacheService);
 
 export async function handler(event: APIGatewayProxyEventV2WithRequestContext<APIGatewayEventRequestContextV2>): Promise<APIGatewayProxyResultV2> {
   const rawBody = event.isBase64Encoded ? Buffer.from(event.body, 'base64') : event.body;
   const data = JSON.parse(rawBody.toString());
   const host = event.headers['x-misskey-host'];
 
-  if (data.type !== 'note') {
+  if (!await isValidRequest(data, host)) {
     return await buildResponse({
       statusCode: 200,
       body: JSON.stringify({
-        status: 'NOT_NOTE',
+        status: 'INVALID_REQUEST',
       }),
       contentType: 'application/json',
     });
@@ -61,31 +33,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
 
   console.log(`Request from ${note.user.id}@${host} (@${note.user.username}@${host})`);
 
-  await redisClient.connect();
-
-  if (await redisClient.get(`hotomoe-crossposter-worker:posted-note-id:${note.id}@${host}`)) {
-    console.log('Already posted; skipping');
-
-    return await buildResponse({
-      statusCode: 200,
-      body: JSON.stringify({
-        status: 'ALREADY_POSTED',
-      }),
-      contentType: 'application/json',
-    });
-  }
-
-  if (!isValidRequest(note)) {
-    return await buildResponse({
-      statusCode: 200,
-      body: JSON.stringify({
-        status: 'INVALID_REQUEST',
-      }),
-      contentType: 'application/json',
-    });
-  }
-
-  const user = await getUser(`${note.userId}@${host}`);
+  const user = await profileService.getUserProfile(`${note.userId}@${host}`);
 
   if (!user) {
     return await buildResponse({
@@ -157,7 +105,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
     tags.add('투표');
   }
 
-  if (note.files.find(file => isFileShouldNotIncluded(file, user))) {
+  if (note.files.find(file => !isFileIncludable(file, user))) {
     tags.add('민감한 파일 포함');
   }
 
@@ -171,6 +119,8 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
 
   const twitterApiConf = user.twitterApiConfs.find(conf => conf.visibility === note.visibility);
 
+  const twitterService = new TwitterService(twitterApiConf.version, twitterApiConf.tokens);
+
   if (!twitterApiConf) {
     console.log(`Twitter API conf not found for visibility ${note.visibility}`);
 
@@ -183,14 +133,12 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
     });
   }
 
-  const client = new TwitterApi(twitterApiConf.tokens);
-
   const uploadTarget: Misskey.entities.DriveFile[] = [];
   const mediaList: string[] = [];
 
   chunks[0] = chunks[0].trim();
 
-  for (const file of note.files.filter(file => !isFileShouldNotIncluded(file, user)).filter(isFileTwitterEmbedable)) {
+  for (const file of note.files.filter(file => isFileIncludable(file, user)).filter(isFileTwitterEmbedable)) {
     if (uploadTarget.length >= 4) {
       tags.add('5개 이상의 이미지');
 
@@ -206,7 +154,9 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
 
   try {
     await Promise.all(uploadTarget.map(async (file, index) => {
-      const media = await uploadMediaToTwitter(client, file);
+      const buffer = await getUrlFileBuffer(file.url);
+
+      const media = await twitterService.uploadMedia(buffer);
 
       mediaList[index] = media;
     }));
@@ -269,11 +219,14 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
   const tweetContent = buildTweetText(chunks);
 
   try {
-    const replyToTweetId = await redisClient.get(`hotomoe-crossposter-worker:posted-note-id:${note.reply?.id}@${host}`) ?? undefined;
+    const replyToTweetId = note.reply ? await cacheService.get('posted-note-id', `${note.reply?.id}@${host}`) ?? undefined : undefined;
 
-    const tweetId = await sendTweet(client, twitterApiConf.version, tweetContent, mediaList, replyToTweetId);
+    const tweetId = await twitterService.tweet(tweetContent, {
+      replyTo: replyToTweetId,
+      mediaIds: mediaList,
+    });
 
-    await redisClient.set(`hotomoe-crossposter-worker:posted-note-id:${note.id}@${host}`, tweetId);
+    await cacheService.set('posted-note-id', `${note.id}@${host}`, tweetId);
 
     return await buildResponse({
       statusCode: 200,
@@ -302,7 +255,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
 
     switch (e.data?.status) {
       case 401: {
-        await redisClient.del(`hotomoe-crossposter-worker:profile:${createHash('md5').update(`${note.userId}@${host}`).digest('hex')}`);
+        await cacheService.del('profile', getHash(`${note.userId}@${host}`));
 
         message = 'API 키 4개가 모두 정상적으로 구성되었는지 확인해주세요.\n\n만약 정상적으로 동작하다가 이 문제가 발생했다면, 해당 사실을 여기에 답글로 적어주신 뒤 웹훅을 비활성화 하시고 기다려주세요. 관리자가 곧 도와드리겠습니다. (수신자를 편집하지 마세요!)';
 
@@ -310,7 +263,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
       }
 
       case 403: {
-        await redisClient.del(`hotomoe-crossposter-worker:profile:${createHash('md5').update(`${note.userId}@${host}`).digest('hex')}`);
+        await cacheService.del('profile', getHash(`${note.userId}@${host}`));
 
         message = 'API 키 4개가 모두 정상적으로 구성되었는지 확인해주세요.\n\n만약 정상적으로 동작하다가 이 문제가 발생했다면, 해당 사실을 여기에 답글로 적어주신 뒤 웹훅을 비활성화 하시고 기다려주세요. 관리자가 곧 도와드리겠습니다. (수신자를 편집하지 마세요!)';
 
@@ -336,21 +289,8 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
   }
 }
 
-async function uploadMediaToTwitter(client: TwitterApi, file: Misskey.entities.DriveFile): Promise<string> {
-  const response = await fetch(file.url);
-  const buffer = await response.arrayBuffer();
-
-  const media = await client.v1.uploadMedia(Buffer.from(buffer), {
-    mimeType: file.type,
-  });
-
-  return media;
-}
-
 async function buildResponse({ statusCode, body, contentType }: { statusCode: number, body: string | Buffer, contentType: string }): Promise<APIGatewayProxyResultV2> {
   console.log(body);
-
-  await redisClient.disconnect();
 
   return {
     statusCode,
@@ -360,49 +300,6 @@ async function buildResponse({ statusCode, body, contentType }: { statusCode: nu
     body: Buffer.from(body).toString('base64'),
     isBase64Encoded: true,
   }
-}
-
-async function getUser(userId: string): Promise<User | null> {
-  const hash = createHash('md5').update(userId).digest('hex');
-
-  const cachedProfile = await redisClient.get(`hotomoe-crossposter-worker:profile:${hash}`);
-
-  if (cachedProfile) {
-    return JSON.parse(cachedProfile) as User;
-  }
-
-  const s3 = new S3Client({
-    region: 'ap-northeast-2',
-  });
-
-  try {
-    const { Body } = await s3.send(new GetObjectCommand({
-      Bucket: `hotomoe-crossposter-${process.env.NODE_ENV}`,
-      Key: `profiles/${hash}.json`,
-    }));
-
-    const user = JSON.parse(await Body.transformToString()) as User;
-
-    if (user.misskeyId !== userId) {
-      throw new Error(`User file is invalid; Expected ${userId}, got ${user.misskeyId}`);
-    }
-
-    const profile = mergeDeep(await getBaseProfile(user.baseProfile), user);
-
-    await redisClient.set(`hotomoe-crossposter-worker:profile:${hash}`, JSON.stringify(profile), {
-      EX: 60 * 5,
-    });
-
-    return profile;
-  } catch (e) {
-    console.error(e);
-
-    return null;
-  }
-}
-
-async function getBaseProfile(profileName: string): Promise<User> {
-  return JSON.parse((await readFile(path.resolve(`./base_profiles/${profileName}.json`))).toString()) as User;
 }
 
 function isFileTwitterEmbedable(file: Misskey.entities.DriveFile): boolean {
@@ -437,7 +334,13 @@ function joinTags(tags: Set<string>): string {
   return Array.from(tags.values()).sort().join(', ');
 }
 
-function isValidRequest(note: WebhookNote): boolean {
+async function isValidRequest(data: any, host: string): Promise<boolean> {
+  if (data.type !== 'note') {
+    return false;
+  }
+
+  const note = data.body.note as WebhookNote;
+
   if (note.mentions?.length > 0) {
     console.log('Mentions found; skipping');
 
@@ -456,127 +359,29 @@ function isValidRequest(note: WebhookNote): boolean {
     return false;
   }
 
+  if (await cacheService.get('posted-note-id', `${note.id}@${host}`)) {
+    console.log('Already posted; skipping');
+
+    return false;
+  }
+
   return true;
 }
 
-function isFileShouldNotIncluded(file: Misskey.entities.DriveFile, user: User): boolean {
+function isFileIncludable(file: Misskey.entities.DriveFile, user: User): boolean {
   if (file.isSensitive && user.confs.excludeNsfw) {
-    return true;
+    return false;
   }
 
-  return false;
+  return true;
 }
 
 async function sendErrorNotification(username: string, host: string, message: string): Promise<void> {
-  const targetUserId =  await getMisskeyUserId(host, username);
-  const adminUserId = await getMisskeyUserId(process.env.MISSKEY_INSTANCE, process.env.MISSKEY_ADMIN);
+  const targetUserId =  await misskeyService.getUserId(host, username);
+  const adminUserId = await misskeyService.getUserId(process.env.MISSKEY_INSTANCE, process.env.MISSKEY_ADMIN);
 
-  await axios.post(`https://${process.env.MISSKEY_INSTANCE}/api/notes/create`, JSON.stringify({
+  await misskeyService.createNote(message, {
     visibility: 'specified',
     visibleUserIds: Array.from(new Set<string>([ targetUserId, adminUserId ]).values()),
-    text: message,
-    i: process.env.MISSKEY_API_TOKEN,
-  }), {
-    headers: {
-      'content-type': 'application/json',
-    },
   });
-}
-
-async function getMisskeyUserId(host: string, username: string): Promise<string> {
-  const cachedId = await redisClient.get(`hotomoe-crossposter-worker:user-id:${username}@${host}`);
-
-  if (cachedId) {
-    return cachedId;
-  }
-
-  const response = await axios.post(`https://${process.env.MISSKEY_INSTANCE}/api/users/show`, JSON.stringify({
-    username,
-    host,
-    i: process.env.MISSKEY_API_TOKEN,
-  }), {
-    headers: {
-      'content-type': 'application/json',
-    },
-  });
-
-  const user = response.data as Misskey.entities.User;
-
-  await redisClient.set(`hotomoe-crossposter-worker:user-id:${username}@${host}`, user.id, {
-    EX: 60 * 60 * 24,
-  });
-
-  return user.id;
-}
-
-function isObject(item: any) {
-  return (item && typeof item === 'object' && !Array.isArray(item));
-}
-
-function mergeDeep<T = object>(target: T, ...sources: T[]): T {
-  if (!sources.length) return target;
-  const source = sources.shift();
-
-  if (isObject(target) && isObject(source)) {
-    for (const key in source) {
-      if (isObject(source[key])) {
-        if (!target[key]) Object.assign(target, { [key]: {} });
-        mergeDeep(target[key], source[key]);
-      } else {
-        Object.assign(target, { [key]: source[key] });
-      }
-    }
-  }
-
-  return mergeDeep(target, ...sources);
-}
-
-async function sendTweet(client: TwitterApi, version: 'v1' | 'v2', content: string, mediaIds: string[], replyTo?: string | undefined, retry?: boolean | undefined): Promise<string> {
-  try {
-    let tweetId: string;
-
-    switch(version) {
-      case 'v1': {
-        const tweet = await client.v1.tweet(content, {
-          in_reply_to_status_id: replyTo,
-          media_ids: mediaIds.length > 0 ? mediaIds.join(',') : undefined,
-        });
-
-        console.log(tweet);
-
-        tweetId = tweet.id_str;
-
-        break;
-      }
-
-      case 'v2': {
-        const tweet = await client.v2.tweet(content, {
-          reply: replyTo ? {
-            in_reply_to_tweet_id: replyTo,
-          } : undefined,
-          media: mediaIds.length > 0 ? {
-            media_ids: mediaIds,
-          } : undefined,
-        });
-
-        console.log(tweet);
-
-        tweetId = tweet.data.id;
-
-        break;
-      }
-
-      default: {
-        throw new Error('Invalid Twitter API version');
-      }
-    }
-
-    return tweetId;
-  } catch (e) {
-    if (e.response?.statusCode === 503 && !retry) {
-      return await sendTweet(client, version, content, mediaIds, replyTo, true);
-    }
-
-    throw e;
-  }
 }

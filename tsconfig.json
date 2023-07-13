@@ -19,6 +19,6 @@
 	"include": [
 		"types/*.ts",
 		"*.d.ts",
-		"*.ts"
+		"**/*.ts"
 	]
 }
