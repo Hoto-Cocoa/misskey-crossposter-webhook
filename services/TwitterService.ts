@@ -2,10 +2,10 @@ import { SendTweetV1Params, SendTweetV2Params, TwitterApi, TwitterApiTokens } fr
 
 type ValidTwitterVersion = 'v1' | 'v2';
 
-interface TwitterServiceTweetOptions {
-  replyTo?: string;
-  isRetry?: boolean;
-  mediaIds?: string[];
+export interface TwitterServiceTweetOptions {
+  replyTo?: string | undefined;
+  isRetry?: boolean | undefined;
+  mediaIds?: string[] | undefined;
 }
 
 export class TwitterService {
@@ -17,13 +17,13 @@ export class TwitterService {
     this.client = new TwitterApi(conf);
   }
 
-  async tweet(text: string, options: TwitterServiceTweetOptions = {}): Promise<string> {
+  async tweet(text: string, options: Partial<TwitterServiceTweetOptions> = {}): Promise<string> {
     let tweetId: string;
 
     try {
-      switch(this.version) {
+      switch (this.version) {
         case 'v1': {
-          const opt = {} as Partial<SendTweetV1Params>;
+          const opt: Partial<SendTweetV1Params> = {};
 
           if (options.replyTo) {
             opt.in_reply_to_status_id = options.replyTo;
@@ -43,7 +43,7 @@ export class TwitterService {
         }
 
         case 'v2': {
-          const opt = {} as Partial<SendTweetV2Params>;
+          const opt: Partial<SendTweetV2Params> = {};
 
           if (options.replyTo) {
             opt.reply = {
@@ -76,14 +76,16 @@ export class TwitterService {
       const error = e as any;
 
       if (error.response?.statusCode === 503 && !options.isRetry) {
-        return await this.tweet(text, Object.assign({}, options, { isRetry: true }));
+        return await this.tweet(text, { ...options, isRetry: true });
       }
 
       throw e;
     }
   }
 
-  async uploadMedia(media: Buffer): Promise<string> {
-    return await this.client.v1.uploadMedia(media);
+  async uploadMedia(media: Buffer, type: string): Promise<string> {
+    return await this.client.v1.uploadMedia(media, {
+      mimeType: type,
+    });
   }
 }

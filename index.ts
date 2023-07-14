@@ -166,7 +166,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
     await Promise.all(uploadTarget.map(async (file, index) => {
       const buffer = await getUrlFileBuffer(file.url);
 
-      const media = await twitterService.uploadMedia(buffer);
+      const media = await twitterService.uploadMedia(buffer, file.type);
 
       mediaList[index] = media;
     }));
