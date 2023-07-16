@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { createHash } from 'crypto';
+import { readFile } from 'fs/promises';
 
 export function isObject(item: any) {
   return (item && typeof item === 'object' && !Array.isArray(item));
@@ -33,4 +34,8 @@ export async function getUrlFileBuffer(url: string): Promise<Buffer> {
 
 export function getHash(data: string | Buffer): string {
   return createHash('md5').update(data).digest('hex');
+}
+
+export async function loadJsonAndAssign<T>(path: string, target: Partial<T> = {}): Promise<T> {
+  return Object.assign({}, JSON.parse(Buffer.from(await readFile(path)).toString()) as T, target);
 }

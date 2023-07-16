@@ -1,4 +1,4 @@
-import { APIGatewayEventRequestContextV2, APIGatewayProxyEventV2WithRequestContext, APIGatewayProxyResultV2 } from 'aws-lambda';
+import { APIGatewayEventRequestContextV2, APIGatewayProxyEventV2WithRequestContext, APIGatewayProxyStructuredResultV2 } from 'aws-lambda';
 import * as Misskey from 'misskey-js';
 import { getHash, getUrlFileBuffer } from './utils.js';
 import { WebhookNote } from './types/webhook.js';
@@ -12,7 +12,7 @@ const cacheService = await CacheService.getInstance();
 const profileService = new ProfileService(cacheService);
 const misskeyService = new MisskeyService(cacheService);
 
-export async function handler(event: APIGatewayProxyEventV2WithRequestContext<APIGatewayEventRequestContextV2>): Promise<APIGatewayProxyResultV2> {
+export async function handler(event: APIGatewayProxyEventV2WithRequestContext<APIGatewayEventRequestContextV2>): Promise<APIGatewayProxyStructuredResultV2> {
   const rawBody = event.isBase64Encoded ? Buffer.from(event.body!, 'base64') : event.body!;
   const data = JSON.parse(rawBody.toString());
   const host = event.headers['x-misskey-host'];
@@ -301,7 +301,7 @@ export async function handler(event: APIGatewayProxyEventV2WithRequestContext<AP
   }
 }
 
-async function buildResponse({ statusCode, body, contentType }: { statusCode: number, body: string | Buffer, contentType: string }): Promise<APIGatewayProxyResultV2> {
+async function buildResponse({ statusCode, body, contentType }: { statusCode: number, body: string, contentType: string }): Promise<APIGatewayProxyStructuredResultV2> {
   console.log(body);
 
   return {
@@ -309,8 +309,8 @@ async function buildResponse({ statusCode, body, contentType }: { statusCode: nu
     headers: {
       'content-type': contentType
     },
-    body: Buffer.from(body).toString('base64'),
-    isBase64Encoded: true,
+    body: body,
+    isBase64Encoded: false,
   }
 }
 

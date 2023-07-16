@@ -14,7 +14,7 @@ export interface User {
     skipHashtag: string;
     cwTitleOnly: boolean;
     excludeNsfw: boolean;
-  }
+  };
 }
 
 export interface UserTwitterApiConf {

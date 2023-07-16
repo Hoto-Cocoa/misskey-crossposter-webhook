@@ -1,0 +1,31 @@
+{
+  "rawPath": "/",
+  "rawQueryString": "",
+  "routeKey": "ANY /",
+  "version": "2.0",
+  "headers": {
+    "content-type": "application/json",
+    "x-misskey-hook-secret": "test",
+    "x-misskey-host": "misskey.test"
+  },
+  "body": "context",
+  "isBase64Encoded": false,
+  "requestContext": {
+    "accountId": "",
+    "apiId": "",
+    "domainName": "",
+    "domainPrefix": "",
+    "http": {
+      "method": "POST",
+      "path": "/",
+      "protocol": "HTTP/1.1",
+      "sourceIp": "",
+      "userAgent": ""
+    },
+    "requestId": "",
+    "routeKey": "",
+    "stage": "",
+    "time": "",
+    "timeEpoch": 0
+  }
+}
