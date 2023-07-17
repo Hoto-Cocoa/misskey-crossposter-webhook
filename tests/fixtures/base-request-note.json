@@ -20,25 +20,8 @@
   "cw": null,
   "visibility": "public",
   "localOnly": false,
-  "fileIds": [
-    "test-file-id"
-  ],
-  "files": [
-    {
-      "createdAt": "",
-      "id": "test-file-id",
-      "type": "video/mp4",
-      "md5": "5cb6bd889c76748b063d57b445df4500",
-      "url": "https://files.misskey.test/name.mp4",
-      "size": 0,
-      "blurhash": "",
-      "comment": "",
-      "isSensitive": false,
-      "name": "name.mp4",
-      "properties": {},
-      "thumbnailUrl": "https://files.misskey.test/name.mp4.jpg"
-    }
-  ],
+  "fileIds": [],
+  "files": [],
   "replyId": "",
   "renoteId": ""
 }

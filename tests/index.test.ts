@@ -11,6 +11,8 @@ import { Duplex } from 'stream';
 import * as Misskey from 'misskey-js';
 import nock from 'nock';
 import { clear } from './_modules/redis.js';
+import { SendTweetV1Params } from 'twitter-api-v2';
+import querystring from 'querystring';
 
 type WebhookIncomingMessage<Type extends string = string, BodyType extends object = {}> = {
   hookId: string;
@@ -347,7 +349,445 @@ describe('When handler called', () => {
     misskeyScope.done();
   });
 
-  it('should return OK code if succeeded', async () => {
+  it('should include link and use cw title as body if not configured cwTitleOnly: false', async () => {
+    const mockedClient = mockClient(S3Client);
+    mockedClient.on(GetObjectCommand).resolves({
+      Body: sdkStreamMixin(Duplex.from(JSON.stringify(baseUser))),
+    });
+
+    const request = createRequest({
+      cw: 'test',
+    });
+
+    const scope = nock('https://api.twitter.com')
+    .post('/1.1/statuses/update.json')
+    .reply(200, (uri, body) => {
+      const data = querystring.parse(body as string) as unknown as SendTweetV1Params;
+
+      expect(data.status).toEqual(`test\n\n전체 내용 읽기: https://${process.env.MISSKEY_INSTANCE}/notes/${baseRequestNote.id}`);
+
+      return { id_str: 'testTweetId' };
+    });
+
+    const response = await handler(request);
+
+    expect(response.body).toEqual(JSON.stringify({
+      status: 'OK',
+    }));
+
+    scope.done();
+  });
+
+  it('should not include link and include all content if configured cwTitleOnly: false', async () => {
+    const mockedClient = mockClient(S3Client);
+    mockedClient.on(GetObjectCommand).resolves({
+      Body: sdkStreamMixin(Duplex.from(JSON.stringify({
+        ...baseUser,
+        confs: {
+          cwTitleOnly: false,
+        },
+      } as User))),
+    });
+
+    const request = createRequest({
+      cw: 'test',
+    });
+
+    const scope = nock('https://api.twitter.com')
+    .post('/1.1/statuses/update.json')
+    .reply(200, (uri, body) => {
+      const data = querystring.parse(body as string) as unknown as SendTweetV1Params;
+
+      expect(data.status).toEqual(`test\n\n${baseRequestNote.text}`);
+
+      return { id_str: 'testTweetId' };
+    });
+
+    const response = await handler(request);
+
+    expect(response.body).toEqual(JSON.stringify({
+      status: 'OK',
+    }));
+
+    scope.done();
+  });
+
+  it('should include link and include renote content if configured enableRenote: true', async () => {
+    const mockedClient = mockClient(S3Client);
+    mockedClient.on(GetObjectCommand).resolves({
+      Body: sdkStreamMixin(Duplex.from(JSON.stringify({
+        ...baseUser,
+        confs: {
+          enableRenote: true,
+        },
+      } as User))),
+    });
+
+    const request = createRequest({
+      renote: {
+        ...baseRequestNote,
+      },
+    });
+
+    const scope = nock('https://api.twitter.com')
+    .post('/1.1/statuses/update.json')
+    .reply(200, (uri, body) => {
+      const data = querystring.parse(body as string) as unknown as SendTweetV1Params;
+
+      expect(data.status).toEqual(`RENOTE @${baseRequestNote.user.username}@${process.env.MISSKEY_INSTANCE}: ${baseRequestNote.text}\n\n전체 내용 읽기: https://${process.env.MISSKEY_INSTANCE}/notes/${baseRequestNote.id}`);
+
+      return { id_str: 'testTweetId' };
+    });
+
+    const response = await handler(request);
+
+    expect(response.body).toEqual(JSON.stringify({
+      status: 'OK',
+    }));
+
+    scope.done();
+  });
+
+  it('should include link and truncate content if length is over 280', async () => {
+    const mockedClient = mockClient(S3Client);
+    mockedClient.on(GetObjectCommand).resolves({
+      Body: sdkStreamMixin(Duplex.from(JSON.stringify(baseUser))),
+    });
+
+    const request = createRequest({
+      text: 'a'.repeat(300),
+    });
+
+    const scope = nock('https://api.twitter.com')
+      .post('/1.1/statuses/update.json')
+      .reply(200, (uri, body) => {
+        const data = querystring.parse(body as string) as unknown as SendTweetV1Params;
+
+        expect(data.status).toEqual(`${'a'.repeat(180)}…\n\n전체 내용 읽기: https://${process.env.MISSKEY_INSTANCE}/notes/${baseRequestNote.id}`);
+
+        return { id_str: 'testTweetId' };
+      });
+
+    const response = await handler(request);
+
+    expect(response.body).toEqual(JSON.stringify({
+      status: 'OK',
+    }));
+
+    scope.done();
+  });
+
+  it('should include link if note has poll', async () => {
+    const mockedClient = mockClient(S3Client);
+    mockedClient.on(GetObjectCommand).resolves({
+      Body: sdkStreamMixin(Duplex.from(JSON.stringify(baseUser))),
+    });
+
+    const request = createRequest({
+      poll: {
+        choices: [],
+        expiresAt: '',
+        multiple: false,
+      },
+    });
+
+    const scope = nock('https://api.twitter.com')
+      .post('/1.1/statuses/update.json')
+      .reply(200, (uri, body) => {
+        const data = querystring.parse(body as string) as unknown as SendTweetV1Params;
+
+        expect(data.status).toEqual(`${baseRequestNote.text}\n\n전체 내용 읽기: https://${process.env.MISSKEY_INSTANCE}/notes/${baseRequestNote.id}`);
+
+        return { id_str: 'testTweetId' };
+      });
+
+    const response = await handler(request);
+
+    expect(response.body).toEqual(JSON.stringify({
+      status: 'OK',
+    }));
+
+    scope.done();
+  });
+
+  it('should include link if note has sensitive file', async () => {
+    const mockedClient = mockClient(S3Client);
+    mockedClient.on(GetObjectCommand).resolves({
+      Body: sdkStreamMixin(Duplex.from(JSON.stringify(baseUser))),
+    });
+
+    const request = createRequest({
+      fileIds: [
+        'test-file-id',
+      ],
+      files: [
+        {
+          createdAt: '',
+          id: 'test-file-id',
+          type: 'video/mp4',
+          md5: '5cb6bd889c76748b063d57b445df4500',
+          url: 'https://files.misskey.test/name.mp4',
+          size: 0,
+          blurhash: '',
+          comment: '',
+          isSensitive: true,
+          name: 'name.mp4',
+          properties: {},
+          thumbnailUrl: 'https://files.misskey.test/name.mp4.jpg',
+        },
+      ],
+    });
+
+    const scope = nock('https://api.twitter.com')
+      .post('/1.1/statuses/update.json')
+      .reply(200, (uri, body) => {
+        const data = querystring.parse(body as string) as unknown as SendTweetV1Params;
+
+        expect(data.status).toEqual(`${baseRequestNote.text}\n\n전체 내용 읽기: https://${process.env.MISSKEY_INSTANCE}/notes/${baseRequestNote.id}`);
+
+        return { id_str: 'testTweetId' };
+      });
+
+    const response = await handler(request);
+
+    expect(response.body).toEqual(JSON.stringify({
+      status: 'OK',
+    }));
+
+    scope.done();
+  });
+
+  it('should include link if note has multiple video', async () => {
+    const mockedClient = mockClient(S3Client);
+    mockedClient.on(GetObjectCommand).resolves({
+      Body: sdkStreamMixin(Duplex.from(JSON.stringify(baseUser))),
+    });
+
+    const request = createRequest({
+      fileIds: [
+        'test-file-id',
+        'test-file-id2',
+      ],
+      files: [
+        {
+          createdAt: '',
+          id: 'test-file-id',
+          type: 'video/mp4',
+          md5: '5cb6bd889c76748b063d57b445df4500',
+          url: 'https://files.misskey.test/name.mp4',
+          size: 0,
+          blurhash: '',
+          comment: '',
+          isSensitive: false,
+          name: 'name.mp4',
+          properties: {},
+          thumbnailUrl: 'https://files.misskey.test/name.mp4.jpg',
+        },
+        {
+          createdAt: '',
+          id: 'test-file-id2',
+          type: 'video/mp4',
+          md5: '5cb6bd889c76748b063d57b445df4500',
+          url: 'https://files.misskey.test/name.mp4',
+          size: 0,
+          blurhash: '',
+          comment: '',
+          isSensitive: false,
+          name: 'name.mp4',
+          properties: {},
+          thumbnailUrl: 'https://files.misskey.test/name.mp4.jpg',
+        },
+      ],
+    });
+
+    const scope = nock('https://api.twitter.com')
+      .post('/1.1/statuses/update.json')
+      .reply(200, (uri, body) => {
+        const data = querystring.parse(body as string) as unknown as SendTweetV1Params;
+
+        expect(data.status).toEqual(`${baseRequestNote.text}\n\n전체 내용 읽기: https://${process.env.MISSKEY_INSTANCE}/notes/${baseRequestNote.id}`);
+
+        return { id_str: 'testTweetId' };
+      });
+
+    const response = await handler(request);
+
+    expect(response.body).toEqual(JSON.stringify({
+      status: 'OK',
+    }));
+
+    scope.done();
+  });
+
+  it('should include link if note has not twitter embedable file', async () => {
+    const mockedClient = mockClient(S3Client);
+    mockedClient.on(GetObjectCommand).resolves({
+      Body: sdkStreamMixin(Duplex.from(JSON.stringify(baseUser))),
+    });
+
+    const request = createRequest({
+      fileIds: [
+        'test-file-id',
+      ],
+      files: [
+        {
+          createdAt: '',
+          id: 'test-file-id',
+          type: 'application/octet-stream',
+          md5: '5cb6bd889c76748b063d57b445df4500',
+          url: 'https://files.misskey.test/name.bin',
+          size: 0,
+          blurhash: '',
+          comment: '',
+          isSensitive: false,
+          name: 'name.bin',
+          properties: {},
+          thumbnailUrl: 'https://files.misskey.test/name.bin.jpg',
+        },
+      ],
+    });
+
+    const scope = nock('https://api.twitter.com')
+      .post('/1.1/statuses/update.json')
+      .reply(200, (uri, body) => {
+        const data = querystring.parse(body as string) as unknown as SendTweetV1Params;
+
+        expect(data.status).toEqual(`${baseRequestNote.text}\n\n전체 내용 읽기: https://${process.env.MISSKEY_INSTANCE}/notes/${baseRequestNote.id}`);
+
+        return { id_str: 'testTweetId' };
+      });
+
+    const response = await handler(request);
+
+    expect(response.body).toEqual(JSON.stringify({
+      status: 'OK',
+    }));
+
+    scope.done();
+  });
+
+  it('should include link if note has more than 4 media', async () => {
+    const mockedClient = mockClient(S3Client);
+    mockedClient.on(GetObjectCommand).resolves({
+      Body: sdkStreamMixin(Duplex.from(JSON.stringify(baseUser))),
+    });
+
+    const misskeyScope = nock(`https://files.misskey.test`)
+      .get(`/name.png`)
+      .times(4)
+      .reply(200, Buffer.from('test'));
+
+    const twitterUploadScope = nock('https://upload.twitter.com/1.1')
+      .post('/media/upload.json')
+      .times(12)
+      .reply(200, { media_id_string: 'testMediaId' });
+
+    const twitterScope = nock('https://api.twitter.com')
+      .post('/1.1/statuses/update.json')
+      .reply(200, (uri, body) => {
+        const data = querystring.parse(body as string) as unknown as SendTweetV1Params;
+
+        expect(data.status).toEqual(`${baseRequestNote.text}\n\n전체 내용 읽기: https://${process.env.MISSKEY_INSTANCE}/notes/${baseRequestNote.id}`);
+
+        return { id_str: 'testTweetId' };
+      });
+
+    const request = createRequest({
+      fileIds: [
+        'test-file-id',
+        'test-file-id2',
+        'test-file-id3',
+        'test-file-id4',
+        'test-file-id5',
+      ],
+      files: [
+        {
+          createdAt: '',
+          id: 'test-file-id',
+          type: 'image/png',
+          md5: '5cb6bd889c76748b063d57b445df4500',
+          url: 'https://files.misskey.test/name.png',
+          size: 0,
+          blurhash: '',
+          comment: '',
+          isSensitive: false,
+          name: 'name.png',
+          properties: {},
+          thumbnailUrl: 'https://files.misskey.test/name.png.jpg',
+        },
+        {
+          createdAt: '',
+          id: 'test-file-id2',
+          type: 'image/png',
+          md5: '5cb6bd889c76748b063d57b445df4500',
+          url: 'https://files.misskey.test/name.png',
+          size: 0,
+          blurhash: '',
+          comment: '',
+          isSensitive: false,
+          name: 'name.png',
+          properties: {},
+          thumbnailUrl: 'https://files.misskey.test/name.png.jpg',
+        },
+        {
+          createdAt: '',
+          id: 'test-file-id3',
+          type: 'image/png',
+          md5: '5cb6bd889c76748b063d57b445df4500',
+          url: 'https://files.misskey.test/name.png',
+          size: 0,
+          blurhash: '',
+          comment: '',
+          isSensitive: false,
+          name: 'name.png',
+          properties: {},
+          thumbnailUrl: 'https://files.misskey.test/name.png.jpg',
+        },
+        {
+          createdAt: '',
+          id: 'test-file-id4',
+          type: 'image/png',
+          md5: '5cb6bd889c76748b063d57b445df4500',
+          url: 'https://files.misskey.test/name.png',
+          size: 0,
+          blurhash: '',
+          comment: '',
+          isSensitive: false,
+          name: 'name.png',
+          properties: {},
+          thumbnailUrl: 'https://files.misskey.test/name.png.jpg',
+        },
+        {
+          createdAt: '',
+          id: 'test-file-id5',
+          type: 'image/png',
+          md5: '5cb6bd889c76748b063d57b445df4500',
+          url: 'https://files.misskey.test/name.png',
+          size: 0,
+          blurhash: '',
+          comment: '',
+          isSensitive: false,
+          name: 'name.png',
+          properties: {},
+          thumbnailUrl: 'https://files.misskey.test/name.png.jpg',
+        },
+      ],
+    });
+
+    const response = await handler(request);
+
+    expect(response.body).toEqual(JSON.stringify({
+      status: 'OK',
+    }));
+
+    misskeyScope.done();
+
+    twitterUploadScope.done();
+
+    twitterScope.done();
+  });
+
+  it('should include media if included', async () => {
     const mockedClient = mockClient(S3Client);
     mockedClient.on(GetObjectCommand).resolves({
       Body: sdkStreamMixin(Duplex.from(JSON.stringify(baseUser))),
@@ -365,14 +805,34 @@ describe('When handler called', () => {
     const twitterScope = nock('https://api.twitter.com')
       .post('/1.1/statuses/update.json')
       .reply(200, (uri, body) => {
-        const data = new URLSearchParams(body as string);
+        const data = querystring.parse(body as string) as unknown as SendTweetV1Params;
 
-        expect(data.get('status')).toEqual(baseRequestNote.text);
+        expect(data.status).toEqual(baseRequestNote.text);
 
         return { id_str: 'testTweetId' };
       });
 
-    const request = createRequest({});
+    const request = createRequest({
+      fileIds: [
+        'test-file-id',
+      ],
+      files: [
+        {
+          createdAt: '',
+          id: 'test-file-id',
+          type: 'video/mp4',
+          md5: '5cb6bd889c76748b063d57b445df4500',
+          url: 'https://files.misskey.test/name.mp4',
+          size: 0,
+          blurhash: '',
+          comment: '',
+          isSensitive: false,
+          name: 'name.mp4',
+          properties: {},
+          thumbnailUrl: 'https://files.misskey.test/name.mp4.jpg',
+        },
+      ],
+    });
 
     const response = await handler(request);
 
@@ -385,5 +845,122 @@ describe('When handler called', () => {
     twitterUploadScope.done();
 
     twitterScope.done();
+  });
+
+  it('should not post link required tweet if configured skipLinkRequired: true', async () => {
+    const mockedClient = mockClient(S3Client);
+    mockedClient.on(GetObjectCommand).resolves({
+      Body: sdkStreamMixin(Duplex.from(JSON.stringify({
+        ...baseUser,
+        confs: {
+          skipLinkRequired: true,
+        },
+      } as User))),
+    });
+
+    const request = createRequest({
+      cw: 'test',
+    });
+
+    const response = await handler(request);
+
+    expect(response.body).toEqual(JSON.stringify({
+      status: 'SKIP_LINK_REQUIRED',
+    }));
+  });
+
+  it('should include tags in tweet if configured enableTags: true', async () => {
+    const mockedClient = mockClient(S3Client);
+    mockedClient.on(GetObjectCommand).resolves({
+      Body: sdkStreamMixin(Duplex.from(JSON.stringify({
+        ...baseUser,
+        confs: {
+          enableTags: true,
+        },
+      } as User))),
+    });
+
+    const request = createRequest({
+      cw: 'test',
+    });
+
+    const scope = nock('https://api.twitter.com')
+      .post('/1.1/statuses/update.json')
+      .reply(200, (uri, body) => {
+        const data = querystring.parse(body as string) as unknown as SendTweetV1Params;
+
+        expect(data.status).toEqual(`test\n\n(CW 설정된 글)\n\n전체 내용 읽기: https://${process.env.MISSKEY_INSTANCE}/notes/${baseRequestNote.id}`);
+
+        return { id_str: 'testTweetId' };
+      });
+
+    const response = await handler(request);
+
+    expect(response.body).toEqual(JSON.stringify({
+      status: 'OK',
+    }));
+
+    scope.done();
+  });
+
+  it('should rebuild tags if built tweet length is over 280 and configured enableTags: true', async () => {
+    const mockedClient = mockClient(S3Client);
+    mockedClient.on(GetObjectCommand).resolves({
+      Body: sdkStreamMixin(Duplex.from(JSON.stringify({
+        ...baseUser,
+        confs: {
+          enableTags: true,
+        },
+      } as User))),
+    });
+
+    const request = createRequest({
+      cw: 'a'.repeat(270),
+    });
+
+    const scope = nock('https://api.twitter.com')
+      .post('/1.1/statuses/update.json')
+      .reply(200, (uri, body) => {
+        const data = querystring.parse(body as string) as unknown as SendTweetV1Params;
+
+        expect(data.status).toEqual(`${'a'.repeat(215)}…\n\n(CW 설정된 글, 장문)\n\n전체 내용 읽기: https://${process.env.MISSKEY_INSTANCE}/notes/${baseRequestNote.id}`);
+
+        return { id_str: 'testTweetId' };
+      });
+
+    const response = await handler(request);
+
+    expect(response.body).toEqual(JSON.stringify({
+      status: 'OK',
+    }));
+
+    scope.done();
+  });
+
+  it('should return DUPLICATE_TWEET code if twitter returned duplicated tweet error', async () => {
+    const mockedClient = mockClient(S3Client);
+    mockedClient.on(GetObjectCommand).resolves({
+      Body: sdkStreamMixin(Duplex.from(JSON.stringify(baseUser))),
+    });
+
+    const request = createRequest({});
+
+    const scope = nock('https://api.twitter.com')
+      .post('/1.1/statuses/update.json')
+      .reply(400, {
+        errors: [
+          {
+            code: 187,
+          },
+        ],
+      });
+
+    const response = await handler(request);
+
+    expect(response.body).toEqual(JSON.stringify({
+      status: 'DUPLICATE_TWEET',
+    }));
+
+    scope.done();
   });
 });
