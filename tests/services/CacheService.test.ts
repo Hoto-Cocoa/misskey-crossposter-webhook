@@ -6,6 +6,19 @@ describe('CacheService test', () => {
     clear();
   });
 
+  it('should return instance', async () => {
+    const service = await CacheService.getInstance();
+
+    expect(service).toBeInstanceOf(CacheService);
+  });
+
+  it('should return same instance', async () => {
+    const service1 = await CacheService.getInstance();
+    const service2 = await CacheService.getInstance();
+
+    expect(service1).toBe(service2);
+  });
+
   it('should return value that configured', async () => {
     const service = await CacheService.getInstance();
 
@@ -17,11 +30,11 @@ describe('CacheService test', () => {
     expect(value).toEqual(expected);
   });
 
-  it('should return undefined if key does not exist', async () => {
+  it('should return null if key does not exist', async () => {
     const service = await CacheService.getInstance();
 
     const value = await service.get('profile', 'not-exists');
 
-    expect(value).toBeUndefined();
+    expect(value).toBeNull();
   });
 });
