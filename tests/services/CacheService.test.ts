@@ -1,7 +1,11 @@
+import { clear } from '../_modules/redis.js';
 import { CacheService } from '../../services/CacheService.js';
 
-// redis-mock is broken, skip the test.
-xdescribe('CacheService test', () => {
+describe('CacheService test', () => {
+  beforeEach(async () => {
+    clear();
+  });
+
   it('should return value that configured', async () => {
     const service = await CacheService.getInstance();
 

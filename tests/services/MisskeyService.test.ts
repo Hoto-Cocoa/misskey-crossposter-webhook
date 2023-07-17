@@ -4,10 +4,15 @@ import { ToTuple } from '../../types/utils.js';
 import * as Misskey from 'misskey-js';
 import axios from 'axios';
 import nock from 'nock';
+import { clear } from '../_modules/redis.js';
 
 axios.defaults.adapter = 'http';
 
 describe('When createNote called', () => {
+  beforeEach(async () => {
+    clear();
+  });
+
   it('should create note as described', async () => {
     const service = new MisskeyService(await CacheService.getInstance());
 

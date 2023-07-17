@@ -2,18 +2,17 @@ import { CacheService } from '../../services/CacheService.js';
 import { createReadStream } from 'fs';
 import { Duplex } from 'stream';
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { mergeDeep } from '../../utils.js';
+import { getHash, mergeDeep } from '../../utils.js';
 import { mockClient } from 'aws-sdk-client-mock';
 import { ProfileService } from '../../services/ProfileService.js';
 import { readFile } from 'fs/promises';
 import { sdkStreamMixin } from '@aws-sdk/util-stream-node';
 import path from 'path';
+import { clear } from '../_modules/redis.js';
 
 describe('When getUserProfile called', () => {
   beforeEach(async () => {
-    const cacheService = await CacheService.getInstance();
-
-    await cacheService.del('profile', 'test');
+    clear();
   });
 
   it('should return user profile if exists', async () => {
@@ -63,25 +62,20 @@ describe('When getUserProfile called', () => {
     expect(profile).toBeNull();
   });
 
-  // redis-mock is broken, skip the test.
-  xit('should return user profile if exists in cache', async () => {
-    const mockedClient = mockClient(S3Client);
-    mockedClient.on(GetObjectCommand).resolves({
-      Body: sdkStreamMixin(createReadStream(path.resolve('./base_profiles/default.json'))),
-    });
-
+  it('should return user profile if exists in cache', async () => {
     const cacheService = await CacheService.getInstance();
 
     const service = new ProfileService(cacheService);
 
-    await cacheService.set('profile', 'test', JSON.stringify({
+    const userProfile = {
       misskeyId: 'test',
       baseProfile: 'default',
-    }));
+    };
+
+    await cacheService.set('profile', getHash('test'), JSON.stringify(userProfile));
 
     const profile = await service.getUserProfile('test');
-    const expected = await readFile(path.resolve('./base_profiles/default.json'));
-    expect(profile).toEqual(JSON.parse(expected.toString()));
+    expect(profile).toEqual(userProfile);
   });
 });
 

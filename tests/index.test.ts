@@ -11,6 +11,7 @@ import { Duplex } from 'stream';
 import axios from 'axios';
 import * as Misskey from 'misskey-js';
 import nock from 'nock';
+import { clear } from './_modules/redis.js';
 
 type WebhookIncomingMessage<Type extends string = string, BodyType extends object = {}> = {
   hookId: string;
@@ -77,7 +78,7 @@ axios.defaults.adapter = 'http';
 
 describe('When handler called', () => {
   beforeEach(async () => {
-    await service.del('posted-note-id', baseRequestNote.id);
+    clear();
   });
 
   it('should return HOST_NOT_FOUND error if called with invalid host', async () => {
@@ -180,7 +181,7 @@ describe('When handler called', () => {
   });
 
   // redis-mock is broken, skip the test.
-  xit('should return INVALID_REQUEST error if already posted', async () => {
+  it('should return INVALID_REQUEST error if already posted', async () => {
     await service.set('posted-note-id', `${baseRequestNote.id}@${baseRequest.headers['x-misskey-host']}`, 'value');
 
     const request = createRequest({});
@@ -216,7 +217,7 @@ describe('When handler called', () => {
 
     const scope = nock(`https://${process.env.MISSKEY_INSTANCE}`);
 
-    scope.post('/api/users/show').times(2).reply(200, {
+    scope.post('/api/users/show').reply(200, {
       id: 'test-user-id',
       name: 'User',
       username: 'user',
