@@ -1,4 +1,4 @@
-import { TwitterApiTokens } from 'twitter-api-v2';
+import { TweetV1, TweetV2PostTweetResult, TwitterApiTokens } from 'twitter-api-v2';
 import { TwitterService } from '../../services/TwitterService.js';
 import nock from 'nock';
 
@@ -15,15 +15,14 @@ beforeEach(() => {
   twitterService = new TwitterService('v1', tokens);
 });
 
-// nock is not working, skip the test.
-xdescribe('TwitterService', () => {
+describe('TwitterService', () => {
   describe('tweet', () => {
     it('should post a tweet using v1 API', async () => {
       const tweetText = 'Test tweet';
 
       const scope = nock('https://api.twitter.com')
         .post('/1.1/statuses/update.json')
-        .reply(200, { id_str: 'testTweetId' });
+        .reply(200, { id_str: 'testTweetId' } as TweetV1);
 
       const tweetId = await twitterService.tweet(tweetText);
 
@@ -37,7 +36,7 @@ xdescribe('TwitterService', () => {
 
       const scope = nock('https://api.twitter.com/2')
         .post('/tweets')
-        .reply(200, { data: { id: 'testTweetId' } });
+        .reply(200, { data: { id: 'testTweetId' } } as TweetV2PostTweetResult);
 
       twitterService = new TwitterService('v2', tokens);
 
@@ -55,6 +54,7 @@ xdescribe('TwitterService', () => {
 
       const scope = nock('https://upload.twitter.com/1.1')
         .post('/media/upload.json')
+        .times(3)
         .reply(200, { media_id_string: 'testMediaId' });
 
       const mediaId = await twitterService.uploadMedia(mediaBuffer, 'image/png');
