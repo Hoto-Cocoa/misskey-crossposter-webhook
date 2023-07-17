@@ -300,4 +300,90 @@ describe('When handler called', () => {
       status: 'TWITTER_API_CONF_NOT_FOUND',
     }));
   });
+
+  it('should return TWITTER_API_ERROR code and send notification if error occurs', async () => {
+    const mockedClient = mockClient(S3Client);
+    mockedClient.on(GetObjectCommand).resolves({
+      Body: sdkStreamMixin(Duplex.from(JSON.stringify(baseUser))),
+    });
+
+    const twitterApiScope = nock('https://api.twitter.com')
+      .post('/1.1/statuses/update.json')
+      .reply(500);
+
+    const misskeyScope = nock(`https://${process.env.MISSKEY_INSTANCE}`);
+
+    misskeyScope.post(`/api/users/show`).reply(200, {
+      id: 'test-user-id',
+      name: 'User',
+      username: 'user',
+      host: null,
+      avatarUrl: '',
+      avatarBlurhash: '',
+      emojis: [],
+      onlineStatus: 'online',
+    } as Misskey.entities.User);
+
+    misskeyScope.post(`/api/notes/create`).reply(200, (uri, body) => {
+      const data = body as Misskey.Endpoints['notes/create']['req'];
+
+      return {
+        id: 'test',
+        text: data.text,
+        visibility: data.visibility,
+      } as Misskey.entities.Note;
+    });
+
+    const request = createRequest({});
+
+    const response = await handler(request);
+
+    expect(response.body).toEqual(JSON.stringify({
+      status: 'TWITTER_API_ERROR',
+    }));
+
+    twitterApiScope.done();
+
+    misskeyScope.done();
+  });
+
+  it('should return OK code if succeeded', async () => {
+    const mockedClient = mockClient(S3Client);
+    mockedClient.on(GetObjectCommand).resolves({
+      Body: sdkStreamMixin(Duplex.from(JSON.stringify(baseUser))),
+    });
+
+    const misskeyScope = nock(`https://files.misskey.test`)
+      .get(`/name.mp4`)
+      .reply(200, Buffer.from('test'));
+
+    const twitterUploadScope = nock('https://upload.twitter.com/1.1')
+      .post('/media/upload.json')
+      .times(3)
+      .reply(200, { media_id_string: 'testMediaId' });
+
+    const twitterScope = nock('https://api.twitter.com')
+      .post('/1.1/statuses/update.json')
+      .reply(200, (uri, body) => {
+        const data = new URLSearchParams(body as string);
+
+        expect(data.get('status')).toEqual(baseRequestNote.text);
+
+        return { id_str: 'testTweetId' };
+      });
+
+    const request = createRequest({});
+
+    const response = await handler(request);
+
+    expect(response.body).toEqual(JSON.stringify({
+      status: 'OK',
+    }));
+
+    misskeyScope.done();
+
+    twitterUploadScope.done();
+
+    twitterScope.done();
+  });
 });

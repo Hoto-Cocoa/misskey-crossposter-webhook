@@ -1,4 +1,4 @@
-import { TweetV1, TweetV2PostTweetResult, TwitterApiTokens } from 'twitter-api-v2';
+import { SendTweetV1Params, SendTweetV2Params, TweetV1, TweetV2PostTweetResult, TwitterApiTokens } from 'twitter-api-v2';
 import { TwitterService } from '../../services/TwitterService.js';
 import nock from 'nock';
 import querystring from 'querystring';
@@ -18,13 +18,13 @@ describe('TwitterService', () => {
   });
 
   describe('tweet', () => {
-    it('should post a tweet using v1 API', async () => {
+    it('should post a tweet (v1)', async () => {
       const tweetText = 'Test tweet';
 
       const scope = nock('https://api.twitter.com')
         .post('/1.1/statuses/update.json')
         .reply(200, (uri, body) => {
-          const data = querystring.parse(body as string);
+          const data = querystring.parse(body as string) as unknown as SendTweetV1Params;
 
           expect(data.status).toEqual(tweetText);
 
@@ -38,13 +38,57 @@ describe('TwitterService', () => {
       expect(tweetId).toEqual('testTweetId');
     });
 
-    it('should post a tweet using v2 API', async () => {
+    it('should post a tweet with media (v1)', async () => {
+      const tweetText = 'Test tweet';
+      const mediaIds = ['testMediaId1', 'testMediaId2'];
+
+      const scope = nock('https://api.twitter.com')
+        .post('/1.1/statuses/update.json')
+        .reply(200, (uri, body) => {
+          const data = querystring.parse(body as string) as unknown as SendTweetV1Params;
+
+          expect(data.media_ids).toEqual(mediaIds.join(','));
+          expect(data.status).toEqual(tweetText);
+
+          return { id_str: 'testTweetId' } as TweetV1;
+        });
+
+      const tweetId = await twitterService.tweet(tweetText, { mediaIds });
+
+      scope.done();
+
+      expect(tweetId).toEqual('testTweetId');
+    });
+
+    it('should post a tweet as a reply (v1)', async () => {
+      const tweetText = 'Test tweet';
+      const replyTo = 'testReplyTo';
+
+      const scope = nock('https://api.twitter.com')
+        .post('/1.1/statuses/update.json')
+        .reply(200, (uri, body) => {
+          const data = querystring.parse(body as string) as unknown as SendTweetV1Params;
+
+          expect(data.in_reply_to_status_id).toEqual(replyTo);
+          expect(data.status).toEqual(tweetText);
+
+          return { id_str: 'testTweetId' } as TweetV1;
+        });
+
+      const tweetId = await twitterService.tweet(tweetText, { replyTo });
+
+      scope.done();
+
+      expect(tweetId).toEqual('testTweetId');
+    });
+
+    it('should post a tweet (v2)', async () => {
       const tweetText = 'Test tweet';
 
-      const scope = nock('https://api.twitter.com/2')
-        .post('/tweets')
+      const scope = nock('https://api.twitter.com')
+        .post('/2/tweets')
         .reply(200, (uri, body) => {
-          const data = body as Record<string, string>;
+          const data = body as SendTweetV2Params;
 
           expect(data.text).toEqual(tweetText);
 
@@ -60,20 +104,22 @@ describe('TwitterService', () => {
       expect(tweetId).toEqual('testTweetId');
     });
 
-    it('should post a tweet with media', async () => {
+    it('should post a tweet with media (v2)', async () => {
       const tweetText = 'Test tweet';
       const mediaIds = ['testMediaId1', 'testMediaId2'];
 
       const scope = nock('https://api.twitter.com')
-        .post('/1.1/statuses/update.json')
+        .post('/2/tweets')
         .reply(200, (uri, body) => {
-          const data = querystring.parse(body as string);
+          const data = body as SendTweetV2Params;
 
-          expect(data.media_ids).toEqual(mediaIds.join(','));
-          expect(data.status).toEqual(tweetText);
+          expect(data.media?.media_ids).toEqual(mediaIds);
+          expect(data.text).toEqual(tweetText);
 
-          return { id_str: 'testTweetId' } as TweetV1;
+          return { data: { id: 'testTweetId' } } as TweetV2PostTweetResult;
         });
+
+      twitterService = new TwitterService('v2', tokens);
 
       const tweetId = await twitterService.tweet(tweetText, { mediaIds });
 
@@ -82,22 +128,46 @@ describe('TwitterService', () => {
       expect(tweetId).toEqual('testTweetId');
     });
 
-    it('should post a tweet as a reply', async () => {
+    it('should post a tweet as a reply (v2)', async () => {
       const tweetText = 'Test tweet';
       const replyTo = 'testReplyTo';
 
       const scope = nock('https://api.twitter.com')
-        .post('/1.1/statuses/update.json')
+        .post('/2/tweets')
         .reply(200, (uri, body) => {
-          const data = querystring.parse(body as string);
+          const data = body as SendTweetV2Params;
 
-          expect(data.in_reply_to_status_id).toEqual(replyTo);
-          expect(data.status).toEqual(tweetText);
+          expect(data.reply?.in_reply_to_tweet_id).toEqual(replyTo);
+          expect(data.text).toEqual(tweetText);
 
-          return { id_str: 'testTweetId' } as TweetV1;
+          return { data: { id: 'testTweetId' } } as TweetV2PostTweetResult;
         });
 
+      twitterService = new TwitterService('v2', tokens);
+
       const tweetId = await twitterService.tweet(tweetText, { replyTo });
+
+      scope.done();
+
+      expect(tweetId).toEqual('testTweetId');
+    });
+
+    it('should throw error if api version is unknown', async () => {
+      twitterService = new TwitterService('v0' as 'v1', tokens);
+
+      await expect(twitterService.tweet('test')).rejects.toThrowError();
+    });
+
+    it('should retry if service unavailable error occurs', async () => {
+      const tweetText = 'Test tweet';
+
+      const scope = nock('https://api.twitter.com')
+        .post('/1.1/statuses/update.json')
+        .reply(503)
+        .post('/1.1/statuses/update.json')
+        .reply(200, { id_str: 'testTweetId' } as TweetV1);
+
+      const tweetId = await twitterService.tweet(tweetText);
 
       scope.done();
 
@@ -109,8 +179,8 @@ describe('TwitterService', () => {
     it('should upload media and return media ID', async () => {
       const mediaBuffer: Buffer = Buffer.from('test');
 
-      const scope = nock('https://upload.twitter.com/1.1')
-        .post('/media/upload.json')
+      const scope = nock('https://upload.twitter.com')
+        .post('/1.1/media/upload.json')
         .times(3)
         .reply(200, { media_id_string: 'testMediaId' });
 

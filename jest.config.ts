@@ -24,4 +24,5 @@ export default {
   silent: true,
   detectOpenHandles: true,
   verbose: true,
+  collectCoverage: true,
 } as JestConfigWithTsJest;

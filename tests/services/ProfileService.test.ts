@@ -10,18 +10,18 @@ import { sdkStreamMixin } from '@aws-sdk/util-stream-node';
 import path from 'path';
 import { clear } from '../_modules/redis.js';
 
+const baseProfile = JSON.parse((await readFile(path.resolve('./base_profiles/default.json'))).toString());
+const mockProfile = {
+  misskeyId: 'test',
+  baseProfile: 'default',
+};
+
 describe('When getUserProfile called', () => {
   beforeEach(async () => {
     clear();
   });
 
   it('should return user profile if exists', async () => {
-    const baseProfile = JSON.parse((await readFile(path.resolve('./base_profiles/default.json'))).toString());
-    const mockProfile = {
-      misskeyId: 'test',
-      baseProfile: 'default',
-    };
-
     const mockedClient = mockClient(S3Client);
     mockedClient.on(GetObjectCommand).resolves({
       Body: sdkStreamMixin(Duplex.from([JSON.stringify(mockProfile)])),
@@ -29,7 +29,7 @@ describe('When getUserProfile called', () => {
 
     const service = new ProfileService(await CacheService.getInstance());
     const profile = await service.getUserProfile('test');
-    const expected = JSON.stringify(mergeDeep(baseProfile, mockProfile));
+    const expected = JSON.stringify(mergeDeep({}, baseProfile, mockProfile));
     expect(profile).toEqual(JSON.parse(expected));
   });
 
@@ -54,7 +54,21 @@ describe('When getUserProfile called', () => {
   it('should return null if user profile is invalid', async () => {
     const mockedClient = mockClient(S3Client);
     mockedClient.on(GetObjectCommand).resolves({
-      Body: sdkStreamMixin(createReadStream(path.resolve('./base_profiles/default.json'))),
+      Body: sdkStreamMixin(Duplex.from([JSON.stringify({})])),
+    });
+
+    const service = new ProfileService(await CacheService.getInstance());
+    const profile = await service.getUserProfile('test');
+    expect(profile).toBeNull();
+  });
+
+  it('should return null if base profile is not found', async () => {
+    const mockedClient = mockClient(S3Client);
+    mockedClient.on(GetObjectCommand).resolves({
+      Body: sdkStreamMixin(Duplex.from([JSON.stringify({
+        ...mockProfile,
+        baseProfile: 'not-exists',
+      })])),
     });
 
     const service = new ProfileService(await CacheService.getInstance());
@@ -89,8 +103,7 @@ describe('When getBaseProfile called', () => {
   it('should return base profile if exists', async () => {
     const service = new ProfileService(await CacheService.getInstance());
     const profile = await service.getBaseProfile('default');
-    const expected = await readFile(path.resolve('./base_profiles/default.json'));
-    expect(profile).toEqual(JSON.parse(expected.toString()));
+    expect(profile).toEqual(baseProfile);
   });
 
   it('should return null if base profile does not exist', async () => {

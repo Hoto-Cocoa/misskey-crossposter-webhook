@@ -7,6 +7,7 @@ export function createClient() {
     get: jest.fn((key: string) => store[key]),
     set: jest.fn((key: string, value: string) => store[key] = value),
     del: jest.fn((key: string) => delete store[key]),
+    connect: jest.fn(),
   };
 }
 
