@@ -8,7 +8,6 @@ import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { sdkStreamMixin } from '@aws-sdk/util-stream-node';
 import { User } from '../types/user.js';
 import { Duplex } from 'stream';
-import axios from 'axios';
 import * as Misskey from 'misskey-js';
 import nock from 'nock';
 import { clear } from './_modules/redis.js';
@@ -73,8 +72,6 @@ function createRequest(note: Partial<WebhookNote>): typeof baseRequest {
 }
 
 const service = await CacheService.getInstance();
-
-axios.defaults.adapter = 'http';
 
 describe('When handler called', () => {
   beforeEach(async () => {

@@ -45,7 +45,7 @@ package:
     - 'node_modules/misskey-js/**'
     - 'node_modules/twitter-api-v2/**'
     - 'node_modules/@aws-sdk/**'
-    - 'node_modules/axios/**'
+    - 'node_modules/got/**'
     - 'node_modules/redis/**'
 
     # @aws-sdk dependencies
@@ -55,15 +55,26 @@ package:
     - 'node_modules/@aws-crypto/**'
     - 'node_modules/strnum/**'
 
-    # axios dependencies
-    - 'node_modules/follow-redirects/**'
-    - 'node_modules/form-data/**'
-    - 'node_modules/proxy-from-env/**'
-    - 'node_modules/asynckit/**'
-    - 'node_modules/combined-stream/**'
-    - 'node_modules/delayed-stream/**'
-    - 'node_modules/mime-types/**'
-    - 'node_modules/mime-db/**'
+    # got dependencies
+    - 'node_modules/@sindresorhus/is/**'
+    - 'node_modules/@szmarczak/http-timer/**'
+    - 'node_modules/cacheable-lookup/**'
+    - 'node_modules/cacheable-request/**'
+    - 'node_modules/decompress-response/**'
+    - 'node_modules/form-data-encoder/**'
+    - 'node_modules/get-stream/**'
+    - 'node_modules/http2-wrapper/**'
+    - 'node_modules/lowercase-keys/**'
+    - 'node_modules/p-cancelable/**'
+    - 'node_modules/responselike/**'
+    - 'node_modules/defer-to-connect/**'
+    - 'node_modules/http-cache-semantics/**'
+    - 'node_modules/keyv/**'
+    - 'node_modules/mimic-response/**'
+    - 'node_modules/normalize-url/**'
+    - 'node_modules/json-buffer/**'
+    - 'node_modules/quick-lru/**'
+    - 'node_modules/resolve-alpn/**'
 
     # redis dependencies
     - 'node_modules/@redis/**'

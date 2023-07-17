@@ -1,4 +1,4 @@
-import axios from 'axios';
+import got from 'got';
 import * as Misskey from 'misskey-js';
 import { CacheService } from './CacheService.js';
 
@@ -10,16 +10,14 @@ export class MisskeyService {
   }
 
   async createNote(text: string, options: Misskey.Endpoints['notes/create']['req']): Promise<Misskey.entities.Note> {
-    const response = await axios.post<Misskey.entities.Note>(`https://${process.env.MISSKEY_INSTANCE}/api/notes/create`, JSON.stringify(Object.assign({}, {
-      text,
-      i: process.env.MISSKEY_API_TOKEN,
-    }, options) as Misskey.Endpoints['notes/create']['req']), {
-      headers: {
-        'content-type': 'application/json',
-      },
-    });
+    const data = await got.post(`https://${process.env.MISSKEY_INSTANCE}/api/notes/create`, {
+      json: Object.assign({}, {
+        text,
+        i: process.env.MISSKEY_API_TOKEN,
+      }, options) as Misskey.Endpoints['notes/create']['req'],
+    }).json<Misskey.entities.Note>();
 
-    return response.data;
+    return data;
   }
 
   async getUserId(host: string, username: string): Promise<string> {
@@ -29,18 +27,16 @@ export class MisskeyService {
       return cachedId;
     }
 
-    const response = await axios.post<Misskey.entities.User>(`https://${process.env.MISSKEY_INSTANCE}/api/users/show`, JSON.stringify({
-      username,
-      host,
-      i: process.env.MISSKEY_API_TOKEN,
-    }), {
-      headers: {
-        'content-type': 'application/json',
+    const data = await got.post(`https://${process.env.MISSKEY_INSTANCE}/api/users/show`, {
+      json: {
+        username,
+        host,
+        i: process.env.MISSKEY_API_TOKEN,
       },
-    });
+    }).json<Misskey.entities.User>();
 
-    await this.cacheService.set('user-id', `${username}@${host}`, response.data.id);
+    await this.cacheService.set('user-id', `${username}@${host}`, data.id);
 
-    return response.data.id;
+    return data.id;
   }
 }

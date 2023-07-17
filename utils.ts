@@ -1,6 +1,6 @@
-import axios from 'axios';
 import { createHash } from 'crypto';
 import { readFile } from 'fs/promises';
+import got from 'got';
 
 export function isObject(item: any) {
   return (item && typeof item === 'object' && !Array.isArray(item));
@@ -25,11 +25,11 @@ export function mergeDeep<T extends Record<any, any>>(target: T, ...sources: T[]
 }
 
 export async function getUrlFileBuffer(url: string): Promise<Buffer> {
-  const response = await axios.get<ArrayBuffer>(url, {
-    responseType: 'arraybuffer',
-  });
+  const data = await got.get(url, {
+    responseType: 'buffer',
+  }).buffer();
 
-  return Buffer.from(response.data);
+  return Buffer.from(data);
 }
 
 export function getHash(data: string | Buffer): string {

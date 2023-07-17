@@ -15,6 +15,9 @@
 		"resolveJsonModule": true,
 		"sourceMap": false,
 		"baseUrl": ".",
+    "paths": {
+      "got": ["./node_modules/got/dist/source"]
+    }
 	},
 	"include": [
 		"types/*.ts",
