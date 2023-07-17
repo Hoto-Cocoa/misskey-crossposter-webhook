@@ -23,18 +23,10 @@ export class CacheService {
   }
 
   async get(type: string, key: string): Promise<string | null> {
-    if (!type || !key) {
-      return null;
-    }
-
-    return await this.client.get(`hotomoe-crossposter-worker:${type}:${key}`);
+    return await this.client.get(`hotomoe-crossposter-worker:${type}:${key}`) ?? null;
   }
 
   async set(type: string, key: string, value: string, options: SetOptions = {}): Promise<void> {
-    if (!type || !key || !value) {
-      return;
-    }
-
     await this.client.set(`hotomoe-crossposter-worker:${type}:${key}`, value, options);
 
     return;
