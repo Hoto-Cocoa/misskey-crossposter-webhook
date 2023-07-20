@@ -73,7 +73,7 @@ function createRequest(note: Partial<WebhookNote>): typeof baseRequest {
   };
 }
 
-const service = await CacheService.getInstance();
+const cacheService = await CacheService.getInstance();
 
 describe('When handler called', () => {
   beforeEach(async () => {
@@ -181,7 +181,7 @@ describe('When handler called', () => {
 
   // redis-mock is broken, skip the test.
   it('should return INVALID_REQUEST error if already posted', async () => {
-    await service.set('posted-note-id', `${baseRequestNote.id}@${baseRequest.headers['x-misskey-host']}`, 'value');
+    await cacheService.set('posted-note-id', `${baseRequestNote.id}@${baseRequest.headers['x-misskey-host']}`, 'value');
 
     const request = createRequest({});
 
@@ -962,5 +962,153 @@ describe('When handler called', () => {
     }));
 
     scope.done();
+  });
+
+  it('should return TWITTER_API_ERROR code and send notification and delete profile cache if twitter returned unauthorized error', async () => {
+    const mockedClient = mockClient(S3Client);
+    mockedClient.on(GetObjectCommand).resolves({
+      Body: sdkStreamMixin(Duplex.from(JSON.stringify(baseUser))),
+    });
+
+    const twitterScope = nock('https://api.twitter.com')
+      .post('/1.1/statuses/update.json')
+      .reply(401, {
+        status: 401,
+      });
+
+    const misskeyScope = nock(`https://${process.env.MISSKEY_INSTANCE}`);
+
+    misskeyScope.post('/api/users/show').reply(200, {
+      id: 'test-user-id',
+      name: 'User',
+      username: 'user',
+      host: null,
+      avatarUrl: '',
+      avatarBlurhash: '',
+      emojis: [],
+      onlineStatus: 'online',
+    } as Misskey.entities.User);
+
+    misskeyScope.post('/api/notes/create').reply(200, (uri, body) => {
+      const data = body as Misskey.Endpoints['notes/create']['req'];
+
+      return {
+        id: 'test',
+        text: data.text,
+        visibility: data.visibility,
+      } as Misskey.entities.Note;
+    });
+
+    const request = createRequest({});
+
+    const response = await handler(request);
+
+    expect(response.body).toEqual(JSON.stringify({
+      status: 'TWITTER_API_ERROR',
+    }));
+
+    expect(await cacheService.get('profile', `${baseRequestNote.user.id}@${baseRequest.headers['x-misskey-host']}`)).toBeNull();
+
+    twitterScope.done();
+
+    misskeyScope.done();
+  });
+
+  it('should return TWITTER_API_ERROR code and send notification and delete profile cache if twitter returned forbidden error', async () => {
+    const mockedClient = mockClient(S3Client);
+    mockedClient.on(GetObjectCommand).resolves({
+      Body: sdkStreamMixin(Duplex.from(JSON.stringify(baseUser))),
+    });
+
+    const twitterScope = nock('https://api.twitter.com')
+      .post('/1.1/statuses/update.json')
+      .reply(403, {
+        status: 403,
+      });
+
+    const misskeyScope = nock(`https://${process.env.MISSKEY_INSTANCE}`);
+
+    misskeyScope.post('/api/users/show').reply(200, {
+      id: 'test-user-id',
+      name: 'User',
+      username: 'user',
+      host: null,
+      avatarUrl: '',
+      avatarBlurhash: '',
+      emojis: [],
+      onlineStatus: 'online',
+    } as Misskey.entities.User);
+
+    misskeyScope.post('/api/notes/create').reply(200, (uri, body) => {
+      const data = body as Misskey.Endpoints['notes/create']['req'];
+
+      return {
+        id: 'test',
+        text: data.text,
+        visibility: data.visibility,
+      } as Misskey.entities.Note;
+    });
+
+    const request = createRequest({});
+
+    const response = await handler(request);
+
+    expect(response.body).toEqual(JSON.stringify({
+      status: 'TWITTER_API_ERROR',
+    }));
+
+    expect(await cacheService.get('profile', `${baseRequestNote.user.id}@${baseRequest.headers['x-misskey-host']}`)).toBeNull();
+
+    twitterScope.done();
+
+    misskeyScope.done();
+  });
+
+  it('should return TWITTER_API_ERROR code and send notification if twitter returned service unavailable error', async () => {
+    const mockedClient = mockClient(S3Client);
+    mockedClient.on(GetObjectCommand).resolves({
+      Body: sdkStreamMixin(Duplex.from(JSON.stringify(baseUser))),
+    });
+
+    const twitterScope = nock('https://api.twitter.com')
+      .post('/1.1/statuses/update.json')
+      .reply(500, { // If set this to 503, handler will switch to 503 case
+        status: 503,
+      });
+
+    const misskeyScope = nock(`https://${process.env.MISSKEY_INSTANCE}`);
+
+    misskeyScope.post('/api/users/show').reply(200, {
+      id: 'test-user-id',
+      name: 'User',
+      username: 'user',
+      host: null,
+      avatarUrl: '',
+      avatarBlurhash: '',
+      emojis: [],
+      onlineStatus: 'online',
+    } as Misskey.entities.User);
+
+    misskeyScope.post('/api/notes/create').reply(200, (uri, body) => {
+      const data = body as Misskey.Endpoints['notes/create']['req'];
+
+      return {
+        id: 'test',
+        text: data.text,
+        visibility: data.visibility,
+      } as Misskey.entities.Note;
+    });
+
+    const request = createRequest({});
+
+    const response = await handler(request);
+
+    expect(response.body).toEqual(JSON.stringify({
+      status: 'TWITTER_API_ERROR',
+    }));
+
+    twitterScope.done();
+
+    misskeyScope.done();
   });
 });
