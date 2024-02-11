@@ -26,7 +26,7 @@ export default {
   verbose: true,
   collectCoverage: true,
   coverageReporters: [
-    "text",
-    "cobertura"
-  ]
+    'text',
+    'cobertura',
+  ],
 } as JestConfigWithTsJest;
