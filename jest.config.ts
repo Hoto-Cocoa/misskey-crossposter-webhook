@@ -25,4 +25,8 @@ export default {
   detectOpenHandles: true,
   verbose: true,
   collectCoverage: true,
+  coverageReporters: [
+    "text",
+    "cobertura"
+  ]
 } as JestConfigWithTsJest;
